@@ -16,6 +16,7 @@ const { title, description, date } = article.data;
 const siteUrl = 'https://victorcode.dev';
 const postSlug = entrySlug(article.id);
 const canonicalUrl = siteUrl + (lang === 'pt' ? '/posts/' + postSlug : '/en/posts/' + postSlug);
+const ogImage = `${siteUrl}/og/${lang}/${postSlug}.png`;
 
 const schemaOrg = JSON.stringify({
   '@context': 'https://schema.org',
@@ -36,6 +37,7 @@ const schemaOrg = JSON.stringify({
   description={description}
   lang={lang}
   canonicalUrl={canonicalUrl}
+  ogImage={ogImage}
   ogType="article"
   schemaOrg={schemaOrg}
 >
