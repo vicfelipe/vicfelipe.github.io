@@ -4,7 +4,7 @@ import tailwind from '@astrojs/tailwind';
 import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
-  site: 'https://vicfelipe.github.io',
+  site: 'https://victorcode.dev',
   output: 'static',
   integrations: [
     mdx(),
