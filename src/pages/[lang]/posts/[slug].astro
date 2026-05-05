@@ -1,0 +1,200 @@
+---
+import ArticleLayout from '@/layouts/ArticleLayout.astro';
+import ArticleCard from '@/components/ArticleCard.astro';
+import ArticleCover from '@/components/ArticleCover.astro';
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { useTranslations, type Lang } from '@/i18n/strings';
+import { getTranslationPair, entrySlug } from '@/lib/utils';
+
+export async function getStaticPaths() {
+  const ptArticles = await getCollection('pt-articles', (a) => !a.data.draft);
+  const enArticles = await getCollection('en-articles', (a) => !a.data.draft);
+
+  return [
+    ...ptArticles.map((article) => ({
+      params: { lang: 'pt', slug: entrySlug(article.id) },
+      props: { article, lang: 'pt' as Lang },
+    })),
+    ...enArticles.map((article) => ({
+      params: { lang: 'en', slug: entrySlug(article.id) },
+      props: { article, lang: 'en' as Lang },
+    })),
+  ];
+}
+
+interface Props {
+  article: CollectionEntry<'pt-articles'> | CollectionEntry<'en-articles'>;
+  lang: Lang;
+}
+
+const { article, lang } = Astro.props;
+const t = useTranslations(lang);
+
+const { Content, headings } = await render(article);
+
+const collection = lang === 'pt' ? 'pt-articles' : 'en-articles';
+const allArticles = await getCollection(collection, (a) => !a.data.draft);
+const related = allArticles
+  .filter((a) => a.data.category === article.data.category && a.id !== article.id)
+  .slice(0, 3);
+
+const ptArticles = await getCollection('pt-articles', (a) => !a.data.draft);
+const enArticles = await getCollection('en-articles', (a) => !a.data.draft);
+const translation = getTranslationPair(ptArticles, enArticles, article.data.translationKey, lang);
+const translationHref = translation
+  ? `/${lang === 'pt' ? 'en' : 'pt'}/posts/${entrySlug(translation.id)}`
+  : undefined;
+---
+
+<ArticleLayout article={article} lang={lang} headings={headings}>
+  <header class="article-header">
+    <p class="article-kicker">
+      <a href={`/${lang}/categories/${article.data.category}`}>
+        {article.data.category}
+      </a>
+    </p>
+    <h1>{article.data.title}</h1>
+    <p class="article-lede">{article.data.description}</p>
+
+    <div class="article-meta">
+      <span>{t('meta_published')} {article.data.dateFormatted[lang]}</span>
+      <span>{article.data.readingTime ?? 8} {t('meta_min_read')}</span>
+      <span>Victor Alencastro</span>
+      {
+        translationHref && (
+          <a href={translationHref} class="meta-translation">
+            {lang === 'pt' ? 'Read in English →' : 'Ler em Português →'}
+          </a>
+        )
+      }
+    </div>
+
+    <div class="article-tags">
+      {article.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+    </div>
+  </header>
+
+  <ArticleCover
+    category={article.data.category}
+    slug={entrySlug(article.id)}
+    title={article.data.title}
+  />
+
+  <Content />
+
+  {
+    related.length > 0 && (
+      <section class="related">
+        <h2 class="related-title">{t('meta_related')}</h2>
+        <div class="related-grid">
+          {related.map((r) => (
+            <ArticleCard
+              variant="card"
+              title={r.data.title}
+              description={r.data.description}
+              slug={entrySlug(r.id)}
+              lang={lang}
+              date={r.data.dateFormatted[lang]}
+              readingTime={r.data.readingTime ?? 8}
+              tags={r.data.tags}
+              category={r.data.category}
+              articleLang={r.data.language}
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
+</ArticleLayout>
+
+<style>
+  .article-header {
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .article-kicker {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 16px;
+  }
+
+  .article-kicker a {
+    color: var(--accent-ink);
+    text-decoration: none;
+  }
+
+  [data-theme="dark"] .article-kicker a {
+    color: var(--accent);
+  }
+
+  .article-kicker a:hover {
+    text-decoration: underline;
+  }
+
+  h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(34px, 4.8vw, 56px);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    margin: 0 0 20px;
+    color: var(--ink);
+  }
+
+  .article-lede {
+    font-family: var(--font-serif);
+    font-size: 20px;
+    color: var(--ink-2);
+    line-height: 1.5;
+    margin: 0 0 24px;
+    max-width: 60ch;
+  }
+
+  .article-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-4);
+    margin-bottom: 16px;
+  }
+
+  .meta-translation {
+    color: var(--accent-ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  [data-theme="dark"] .meta-translation {
+    color: var(--accent);
+  }
+
+  .article-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .related {
+    margin-top: 80px;
+    padding-top: 48px;
+    border-top: 1px solid var(--line);
+  }
+
+  .related-title {
+    font-family: var(--font-serif);
+    font-size: 24px;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .related-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+</style>

@@ -1,0 +1,111 @@
+---
+const CATEGORY_HUES: Record<string, number> = {
+  platform: 200,
+  backend: 145,
+  databases: 35,
+  observability: 280,
+  data: 165,
+  career: 50,
+};
+
+interface Props {
+  category: string;
+  slug: string;
+  title: string;
+  /** compact=true renders a shorter banner (used inside article cards) */
+  compact?: boolean;
+}
+
+const { category, slug, title, compact = false } = Astro.props;
+const hue = CATEGORY_HUES[category] ?? 144;
+
+const seed = [...(slug + title)].reduce((acc, c, i) => acc + c.charCodeAt(0) * (i + 1), 0);
+
+const COLS = compact ? 10 : 14;
+const ROWS = compact ? 3 : 4;
+const DOT_SPACING = compact ? 76 : 56;
+const SVG_H = compact ? 96 : 160;
+
+const dots = Array.from({ length: COLS * ROWS }, (_, i) => {
+  const col = i % COLS;
+  const row = Math.floor(i / COLS);
+  const h = (seed * (i + 1) * 7919 + i * 331) | 0;
+  const r = 2 + (Math.abs(h) % (compact ? 4 : 5));
+  const op = 0.08 + (Math.abs(h * 3) % 55) / 100;
+  return {
+    x: compact ? 20 + col * DOT_SPACING : 24 + col * DOT_SPACING,
+    y: compact ? 14 + row * 30 : 24 + row * 40,
+    r,
+    op,
+  };
+});
+
+const accentLight = `oklch(72% 0.18 ${hue})`;
+const bgDark = `oklch(16% 0.07 ${hue})`;
+const bgMid = `oklch(20% 0.06 ${hue})`;
+const gradId = `cg-${(slug + (compact ? '-c' : '')).replace(/[^a-z0-9]/g, '')}`;
+---
+
+<div class:list={['article-cover', { 'article-cover--compact': compact }]} aria-hidden="true">
+  <svg
+    class="cover-svg"
+    viewBox={`0 0 800 ${SVG_H}`}
+    xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid slice"
+  >
+    <defs>
+      <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0%" stop-color={bgDark} />
+        <stop offset="50%" stop-color={bgMid} />
+        <stop offset="100%" stop-color={bgDark} />
+      </linearGradient>
+      <linearGradient id={`${gradId}-v`} x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="white" stop-opacity="0.03" />
+        <stop offset="100%" stop-color="black" stop-opacity="0.1" />
+      </linearGradient>
+    </defs>
+
+    <rect width="800" height={SVG_H} fill={`url(#${gradId})`} />
+    <rect width="800" height={SVG_H} fill={`url(#${gradId}-v`} />
+
+    {dots.map(({ x, y, r, op }) => (
+      <circle cx={x} cy={y} r={r} fill={accentLight} opacity={op} />
+    ))}
+
+    {!compact && (
+      <text
+        x="24"
+        y={SVG_H - 12}
+        font-family="'JetBrains Mono', monospace"
+        font-size="11"
+        letter-spacing="0.12em"
+        fill={accentLight}
+        opacity="0.55"
+      >
+        // {category}
+      </text>
+    )}
+  </svg>
+</div>
+
+<style>
+  .article-cover {
+    width: 100%;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    margin-bottom: 40px;
+    border: 1px solid var(--line);
+  }
+
+  .article-cover--compact {
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .cover-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+</style>

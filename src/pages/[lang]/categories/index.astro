@@ -1,0 +1,88 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import CategoryPill from '@/components/CategoryPill.astro';
+import ArticleRow from '@/components/ArticleRow.astro';
+import { getCollection } from 'astro:content';
+import { useTranslations, type Lang } from '@/i18n/strings';
+import { CATEGORIES } from '@/lib/categories';
+import { entrySlug } from '@/lib/utils';
+
+export function getStaticPaths() {
+  return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
+}
+
+const { lang } = Astro.params as { lang: Lang };
+const t = useTranslations(lang);
+
+const collection = lang === 'pt' ? 'pt-articles' : 'en-articles';
+const articles = (await getCollection(collection, (a) => !a.data.draft)).sort(
+  (a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime()
+);
+
+const counts = articles.reduce<Record<string, number>>((acc, a) => {
+  acc[a.data.category] = (acc[a.data.category] ?? 0) + 1;
+  return acc;
+}, {});
+---
+
+<BaseLayout
+  title={`${t('cat_title')} — Victor Alencastro`}
+  description={t('cat_sub')}
+  lang={lang}
+>
+  <div class="page-container">
+    <header class="page-header">
+      <p class="page-kicker">/ {t('cat_title').toLowerCase()}</p>
+      <h1 class="page-title">{t('cat_title')}</h1>
+      <p class="page-lede">{t('cat_sub')}</p>
+    </header>
+
+    <div class="filter-row">
+      <a href={`/${lang}/categories`} class="category-pill category-pill--active">
+        All ({articles.length})
+      </a>
+      {
+        CATEGORIES.map((cat) => (
+          <CategoryPill
+            variant="pill"
+            id={cat.id}
+            label={`${cat[lang]} (${counts[cat.id] ?? 0})`}
+            count={counts[cat.id] ?? 0}
+            lang={lang}
+          />
+        ))
+      }
+    </div>
+
+    <div class="articles-list">
+      {
+        articles.map((article) => (
+          <ArticleRow
+            title={article.data.title}
+            description={article.data.description}
+            slug={entrySlug(article.id)}
+            lang={lang}
+            date={article.data.dateFormatted[lang]}
+            readingTime={article.data.readingTime ?? 8}
+            tags={article.data.tags}
+            category={article.data.category}
+            articleLang={article.data.language}
+          />
+        ))
+      }
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .page-header {
+    margin-bottom: 40px;
+  }
+
+  .articles-list {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: var(--paper);
+  }
+</style>

@@ -1,0 +1,328 @@
+---
+import ArticleCover from './ArticleCover.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  slug: string;
+  lang: 'pt' | 'en';
+  date: string;
+  readingTime: number;
+  tags: string[];
+  category: string;
+  variant?: 'card' | 'featured' | 'list';
+  articleLang: 'pt' | 'en';
+}
+
+const {
+  title,
+  description,
+  slug,
+  lang,
+  date,
+  readingTime,
+  tags,
+  category,
+  variant = 'card',
+  articleLang,
+} = Astro.props;
+---
+
+{
+  variant === 'featured' ? (
+    <a href={`/${lang}/posts/${slug}`} class="featured-card">
+      <div class="featured-card__art" aria-hidden="true">
+        <ArticleCover category={category} slug={slug} title={title} />
+        <span class="featured-art-label">FEATURED · 01</span>
+      </div>
+      <div class="featured-card__body">
+        <div class="card-meta">
+          <span class="card-cat">{category}</span>
+          <span class="card-dot" aria-hidden="true" />
+          <span class="card-date">{date}</span>
+          <span class="card-dot" aria-hidden="true" />
+          <span class="card-read">{readingTime} min</span>
+          {articleLang !== lang && <span class="lang-badge">{articleLang.toUpperCase()}</span>}
+        </div>
+        <h3 class="featured-card__title">{title}</h3>
+        <p class="featured-card__excerpt">{description}</p>
+        <div class="card-tags">
+          {tags.slice(0, 3).map((tag) => (
+            <span class="tag">{tag}</span>
+          ))}
+        </div>
+      </div>
+    </a>
+  ) : (
+    <a href={`/${lang}/posts/${slug}`} class="article-card">
+      <div class="card-cover-wrap">
+        <ArticleCover category={category} slug={slug} title={title} compact={true} />
+      </div>
+      <div class="card-body">
+        <span class="card-arrow" aria-hidden="true">→</span>
+        <div class="card-meta">
+          <span class="card-cat">{category}</span>
+          <span class="card-dot" aria-hidden="true" />
+          <span class="card-date">{date}</span>
+          {articleLang !== lang && <span class="lang-badge">{articleLang.toUpperCase()}</span>}
+        </div>
+        <h3 class="article-card__title">{title}</h3>
+        <p class="article-card__excerpt">{description}</p>
+        <div class="card-foot">
+          <div class="card-tags">
+            {tags.slice(0, 3).map((tag) => (
+              <span class="tag">{tag}</span>
+            ))}
+          </div>
+          <span class="card-read">{readingTime} min</span>
+        </div>
+      </div>
+    </a>
+  )
+}
+
+<style>
+  /* ── Featured card ── */
+  .featured-card {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    background: var(--paper);
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 32px;
+  }
+
+  .featured-card:hover {
+    border-color: var(--ink-4);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .featured-card__art {
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+    min-height: 280px;
+  }
+
+  /* Cover SVG fills the art panel completely */
+  .featured-card__art :global(.article-cover) {
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    border: none;
+    margin: 0;
+    height: 100%;
+  }
+
+  .featured-card__art :global(.cover-svg) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .featured-art-label {
+    position: absolute;
+    bottom: 14px;
+    left: 16px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: oklch(80% 0.05 200);
+    opacity: 0.7;
+    z-index: 2;
+  }
+
+  .featured-card__body {
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    justify-content: center;
+  }
+
+  .featured-card__title {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: clamp(22px, 2.4vw, 30px);
+    line-height: 1.18;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+
+  .featured-card:hover .featured-card__title {
+    color: var(--accent-ink);
+  }
+
+  [data-theme="dark"] .featured-card:hover .featured-card__title {
+    color: var(--accent);
+  }
+
+  .featured-card__excerpt {
+    color: var(--ink-2);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* ── Standard card ── */
+  .article-card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  }
+
+  .article-card:hover {
+    border-color: var(--ink-4);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Compact cover strip at the top of each card */
+  .card-cover-wrap {
+    flex-shrink: 0;
+  }
+
+  .card-cover-wrap :global(.article-cover--compact) {
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    margin: 0;
+  }
+
+  .card-body {
+    position: relative;
+    padding: 20px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+  }
+
+  .article-card__title {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: -0.018em;
+    margin: 0;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+
+  .article-card:hover .article-card__title {
+    color: var(--accent-ink);
+  }
+
+  [data-theme="dark"] .article-card:hover .article-card__title {
+    color: var(--accent);
+  }
+
+  .article-card__excerpt {
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0;
+    flex: 1;
+  }
+
+  .card-arrow {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 14px;
+    color: var(--ink-4);
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .article-card:hover .card-arrow {
+    color: var(--accent);
+    transform: translate(2px, -2px);
+  }
+
+  /* ── Shared ── */
+  .card-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+  }
+
+  .card-cat {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .card-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--ink-4);
+    flex-shrink: 0;
+  }
+
+  .card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: auto;
+  }
+
+  .card-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .card-read {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  .lang-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    font-family: var(--font-mono);
+  }
+
+  [data-theme="dark"] .lang-badge {
+    color: var(--accent);
+  }
+
+  @media (max-width: 720px) {
+    .featured-card {
+      grid-template-columns: 1fr;
+    }
+
+    .featured-card__art {
+      min-height: 160px;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+    }
+  }
+</style>

@@ -1,0 +1,116 @@
+---
+import { useTranslations } from '@/i18n/strings';
+
+interface Props {
+  headings: { depth: number; text: string; slug: string }[];
+  lang: 'pt' | 'en';
+}
+
+const { headings, lang } = Astro.props;
+const t = useTranslations(lang);
+const h2 = headings.filter((h) => h.depth === 2);
+---
+
+<nav class="toc" aria-label={t('meta_toc')}>
+  <p class="toc-label">{t('meta_toc')}</p>
+  <ol class="toc-list">
+    {
+      h2.map((h, i) => (
+        <li>
+          <a href={`#${h.slug}`} class="toc-link" data-toc-slug={h.slug}>
+            <span class="toc-num">{String(i + 1).padStart(2, '0')}</span>
+            <span class="toc-text">{h.text}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+</nav>
+
+<script>
+  const links = document.querySelectorAll<HTMLAnchorElement>('.toc-link');
+
+  const sections = Array.from(links).map((l) => {
+    const slug = l.dataset.tocSlug!;
+    return document.getElementById(slug);
+  });
+
+  function update() {
+    const scrollY = window.scrollY + 140;
+    let active = 0;
+    sections.forEach((sec, i) => {
+      if (sec && sec.getBoundingClientRect().top + window.scrollY <= scrollY) {
+        active = i;
+      }
+    });
+    links.forEach((l, i) => l.classList.toggle('is-active', i === active));
+  }
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+</script>
+
+<style>
+  .toc {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .toc-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-4);
+    margin-bottom: 14px;
+    font-weight: 500;
+  }
+
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--line);
+  }
+
+  .toc-link {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 14px;
+    margin-left: -1px;
+    text-decoration: none;
+    color: var(--ink-3);
+    border-left: 2px solid transparent;
+    transition: all 0.15s ease;
+    width: 100%;
+  }
+
+  .toc-link:hover {
+    color: var(--ink);
+    background: var(--paper-2);
+  }
+
+  .toc-link.is-active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  [data-theme="dark"] .toc-link.is-active {
+    color: var(--accent);
+  }
+
+  .toc-num {
+    color: var(--ink-4);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .toc-link.is-active .toc-num {
+    color: var(--accent);
+  }
+</style>

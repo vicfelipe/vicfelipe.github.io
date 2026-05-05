@@ -1,0 +1,107 @@
+---
+interface Props {
+  filename?: string;
+  lang?: string;
+}
+
+const { filename, lang: codeLang } = Astro.props;
+---
+
+<div class="code-block">
+  {
+    (filename || codeLang) && (
+      <div class="code-block__header">
+        {filename && <span class="code-block__filename">{filename}</span>}
+        {codeLang && <span class="code-block__lang">{codeLang}</span>}
+        <button class="code-block__copy" data-copy-btn aria-label="Copy code">
+          Copy
+        </button>
+      </div>
+    )
+  }
+  <div class="code-block__content">
+    <slot />
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-btn]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.closest('.code-block')?.querySelector('pre');
+      if (!pre) return;
+      await navigator.clipboard.writeText(pre.textContent ?? '');
+      btn.textContent = '✓ copied';
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+      }, 1400);
+    });
+  });
+</script>
+
+<style>
+  .code-block {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    margin: 32px 0;
+  }
+
+  .code-block__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--paper-3);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  [data-theme="dark"] .code-block__header {
+    background: oklch(15% 0.01 260);
+  }
+
+  .code-block__filename {
+    color: var(--ink-3);
+  }
+
+  .code-block__lang {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  [data-theme="dark"] .code-block__lang {
+    color: var(--accent);
+  }
+
+  .code-block__copy {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 3px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-4);
+    cursor: pointer;
+    transition: color 150ms, border-color 150ms;
+  }
+
+  .code-block__copy:hover {
+    color: var(--ink);
+    border-color: var(--ink-3);
+  }
+
+  .code-block__content :global(pre) {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    padding: 20px !important;
+  }
+</style>

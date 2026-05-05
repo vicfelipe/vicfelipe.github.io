@@ -1,0 +1,473 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { useTranslations, type Lang } from '@/i18n/strings';
+import { TIMELINE, EDUCATION, STACK } from '@/lib/about';
+
+export function getStaticPaths() {
+  return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
+}
+
+const { lang } = Astro.params as { lang: Lang };
+const t = useTranslations(lang);
+---
+
+<BaseLayout
+  title={`${t('about_title')} — Victor Alencastro`}
+  description={t('about_lede').slice(0, 160)}
+  lang={lang}
+>
+  <div class="page-container">
+    <header class="page-header">
+      <p class="page-kicker">/ {t('about_title').toLowerCase()}</p>
+      <h1 class="page-title">{t('about_title')}</h1>
+      <p class="page-lede">{t('about_lede')}</p>
+    </header>
+
+    <!-- Meta strip -->
+    <div class="about-meta">
+      <div class="about-meta__cell">
+        <span class="about-meta__label">{t('about_now_label')}</span>
+        <span class="about-meta__value">{t('about_now_text')}</span>
+      </div>
+      <div class="about-meta__cell">
+        <span class="about-meta__label">LOC</span>
+        <span class="about-meta__value">{t('about_loc')}</span>
+      </div>
+      <div class="about-meta__cell">
+        <span class="about-meta__label">EMAIL</span>
+        <a href="mailto:vicfelipe@live.com" class="about-meta__value about-meta__link">
+          {t('about_email')}
+        </a>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <section class="about-section">
+      <h2 class="about-section__title">{t('about_timeline')}</h2>
+      <ul class="timeline">
+        {
+          TIMELINE.map((entry, i) => (
+            <li class="timeline-item">
+              <div class="timeline-rail" aria-hidden="true">
+                <span class="timeline-dot" />
+                {i < TIMELINE.length - 1 && <span class="timeline-rail-line" />}
+              </div>
+              <div class="timeline-card">
+                <p class="timeline-period">{entry.period[lang]}</p>
+                <h3 class="timeline-role">{entry.role[lang]}</h3>
+                <p class="timeline-org">{entry.org}</p>
+                <p class="timeline-body">{entry.body[lang]}</p>
+                <div class="timeline-chips">
+                  {entry.chips.map((chip) => (
+                    <span class="chip">{chip}</span>
+                  ))}
+                </div>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <!-- Stack -->
+    <section class="about-section">
+      <h2 class="about-section__title">{t('about_stack')}</h2>
+      <p class="about-section__sub">{t('about_stack_sub')}</p>
+      <div class="stack-grid">
+        {
+          Object.entries(STACK).map(([col, items]) => (
+            <div class="stack-col">
+              <h4>{col}</h4>
+              <ul>
+                {items.map((item) => (
+                  <li>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <!-- Education -->
+    <section class="about-section">
+      <h2 class="about-section__title">{t('about_education')}</h2>
+      <ul class="education-list">
+        {
+          EDUCATION.map((entry) => (
+            <li class="education-row">
+              <span class="education-period">{entry.period}</span>
+              <div>
+                <p class="education-title">{entry.title[lang]}</p>
+                <p class="education-org">{entry.org}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <!-- Contact -->
+    <section class="about-section">
+      <h2 class="about-section__title">{t('about_contact')}</h2>
+      <p class="about-section__sub">{t('about_contact_sub')}</p>
+      <div class="contact-grid">
+        <a href="mailto:vicfelipe@live.com" class="contact-card">
+          <span class="contact-card__key">Email</span>
+          <span class="contact-card__val">vicfelipe@live.com</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
+        <a
+          href="https://linkedin.com/in/victoralencastro"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="contact-card"
+        >
+          <span class="contact-card__key">LinkedIn</span>
+          <span class="contact-card__val">victoralencastro</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
+        <a
+          href="https://github.com/victoralencastro"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="contact-card"
+        >
+          <span class="contact-card__key">GitHub</span>
+          <span class="contact-card__val">victoralencastro</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+  </div>
+</BaseLayout>
+
+<style>
+  .page-header {
+    margin-bottom: 40px;
+  }
+
+  /* Meta strip */
+  .about-meta {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    margin-bottom: 64px;
+  }
+
+  .about-meta__cell {
+    padding: 18px 22px;
+    background: var(--paper-2);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .about-meta__label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--ink-4);
+    text-transform: uppercase;
+  }
+
+  .about-meta__value {
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .about-meta__link {
+    color: var(--accent-ink);
+    text-decoration: none;
+  }
+
+  [data-theme="dark"] .about-meta__link {
+    color: var(--accent);
+  }
+
+  /* Sections */
+  .about-section {
+    margin-bottom: 64px;
+  }
+
+  .about-section__title {
+    font-family: var(--font-serif);
+    font-size: 28px;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  .about-section__sub {
+    color: var(--ink-3);
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+
+  /* Timeline */
+  .timeline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .timeline-item {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 24px;
+    padding-bottom: 32px;
+    position: relative;
+  }
+
+  .timeline-rail {
+    position: relative;
+    height: 100%;
+  }
+
+  .timeline-dot {
+    position: absolute;
+    left: 6px;
+    top: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 2px solid var(--accent);
+    display: block;
+  }
+
+  .timeline-rail-line {
+    position: absolute;
+    left: 11px;
+    top: 24px;
+    bottom: -32px;
+    width: 1px;
+    background: var(--line);
+    display: block;
+  }
+
+  .timeline-card {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 22px 24px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .timeline-card:hover {
+    border-color: var(--ink-4);
+    transform: translateX(2px);
+  }
+
+  .timeline-period {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    margin: 0 0 8px;
+  }
+
+  .timeline-role {
+    font-family: var(--font-serif);
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    margin: 0 0 4px;
+    color: var(--ink);
+  }
+
+  .timeline-org {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    color: var(--accent-ink);
+    margin: 0 0 10px;
+  }
+
+  [data-theme="dark"] .timeline-org {
+    color: var(--accent);
+  }
+
+  .timeline-body {
+    color: var(--ink-2);
+    font-size: 14.5px;
+    line-height: 1.6;
+    margin: 0 0 14px;
+  }
+
+  .timeline-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Stack */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+
+  .stack-col {
+    padding: 18px;
+    background: var(--paper);
+  }
+
+  .stack-col h4 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    margin: 0 0 10px;
+  }
+
+  .stack-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stack-col li {
+    font-size: 14px;
+    color: var(--ink);
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .stack-col li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 4px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  /* Education */
+  .education-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .education-row {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 24px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+
+  .education-row:last-child {
+    border-bottom: none;
+  }
+
+  .education-period {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    padding-top: 3px;
+  }
+
+  .education-title {
+    font-size: 15px;
+    color: var(--ink);
+    margin: 0 0 2px;
+    font-weight: 500;
+  }
+
+  .education-org {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    margin: 0;
+  }
+
+  /* Contact */
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .contact-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px 20px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .contact-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .contact-card__key {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .contact-card__val {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+
+  .contact-card__arrow {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    color: var(--ink-4);
+    font-size: 14px;
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .contact-card:hover .contact-card__arrow {
+    color: var(--accent);
+    transform: translate(2px, -2px);
+  }
+
+  @media (max-width: 720px) {
+    .about-meta {
+      grid-template-columns: 1fr;
+    }
+
+    .education-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .contact-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

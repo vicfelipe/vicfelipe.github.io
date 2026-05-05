@@ -1,0 +1,87 @@
+---
+interface Props {
+  lang: 'pt' | 'en';
+  currentPath: string;
+}
+
+const { lang, currentPath } = Astro.props;
+const slug = currentPath.replace(/^\/(pt|en)/, '');
+---
+
+<div class="lang-switch" role="group" aria-label="Language">
+  <a
+    href={`/pt${slug}`}
+    class:list={['lang-opt', { active: lang === 'pt' }]}
+    aria-current={lang === 'pt' ? 'page' : undefined}
+  ><span class="lang-flag" aria-hidden="true"><svg width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg" style="border-radius:2px"><rect width="16" height="12" fill="#009c3b"/><polygon points="8,1.2 14.8,6 8,10.8 1.2,6" fill="#ffdf00"/><circle cx="8" cy="6" r="2.8" fill="#002776"/></svg></span>PT-BR</a>
+  <a
+    href={`/en${slug}`}
+    class:list={['lang-opt', { active: lang === 'en' }]}
+    aria-current={lang === 'en' ? 'page' : undefined}
+  ><span class="lang-flag" aria-hidden="true"><svg width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg" style="border-radius:2px"><rect width="16" height="12" fill="#B22234"/><rect y="0.923" width="16" height="0.923" fill="#fff"/><rect y="2.769" width="16" height="0.923" fill="#fff"/><rect y="4.615" width="16" height="0.923" fill="#fff"/><rect y="6.462" width="16" height="0.923" fill="#fff"/><rect y="8.308" width="16" height="0.923" fill="#fff"/><rect y="10.154" width="16" height="0.923" fill="#fff"/><rect width="6.4" height="5.538" fill="#3C3B6E"/></svg></span>EN</a>
+  <span class:list={['lang-indicator', { 'is-en': lang === 'en' }]} aria-hidden="true"></span>
+</div>
+
+<style>
+  .lang-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .lang-opt {
+    position: relative;
+    z-index: 2;
+    /* Equal fixed width so indicator matches both options */
+    width: 64px;
+    text-align: center;
+    padding: 5px 0;
+    color: var(--ink-3);
+    text-decoration: none;
+    border-radius: 999px;
+    transition: color 200ms;
+    font-weight: 500;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .lang-flag {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .lang-opt.active {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .lang-indicator {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    /* Width = one option slot */
+    width: 64px;
+    background: var(--paper);
+    border-radius: 999px;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.08), 0 0 0 1px var(--line-soft);
+    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+  }
+
+  /* Shift indicator to cover EN option (1 slot-width to the right) */
+  .lang-indicator.is-en {
+    transform: translateX(64px);
+  }
+</style>

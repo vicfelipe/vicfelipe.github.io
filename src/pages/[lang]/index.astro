@@ -1,0 +1,549 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ArticleCard from '@/components/ArticleCard.astro';
+import CategoryPill from '@/components/CategoryPill.astro';
+import { useTranslations, type Lang } from '@/i18n/strings';
+import { getCollection } from 'astro:content';
+import { CATEGORIES } from '@/lib/categories';
+import { entrySlug } from '@/lib/utils';
+
+export function getStaticPaths() {
+  return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
+}
+
+const { lang } = Astro.params as { lang: Lang };
+const t = useTranslations(lang);
+
+const collection = lang === 'pt' ? 'pt-articles' : 'en-articles';
+const articles = (await getCollection(collection))
+  .filter((a) => !a.data.draft)
+  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
+
+const [featured, ...rest] = articles;
+const recent = rest.slice(0, 4);
+
+const counts = articles.reduce<Record<string, number>>((acc, a) => {
+  acc[a.data.category] = (acc[a.data.category] ?? 0) + 1;
+  return acc;
+}, {});
+---
+
+<BaseLayout title={`Victor Alencastro — ${t('hero_tagline').slice(0, 60)}`} lang={lang}>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-left">
+        <p class="hero-kicker">
+          <span class="status-dot" aria-hidden="true"></span>
+          {t('hero_kicker')}
+        </p>
+        <h1 class="hero-title">
+          <span class="hero-name">{t('hero_name')}</span>
+        </h1>
+        <p class="hero-tag">{t('hero_tagline')}</p>
+        <div class="hero-cta">
+          <a href="#recent" class="btn btn--primary">{t('hero_cta_read')}</a>
+          <a href={`/${lang}/about`} class="btn btn--ghost">{t('hero_cta_about')}</a>
+        </div>
+      </div>
+
+      <div class="hero-right">
+        <div class="identity-card">
+          <dl class="identity-rows">
+            <div class="identity-row">
+              <dt>role</dt>
+              <dd>{t('hero_meta_role')}</dd>
+            </div>
+            <div class="identity-row">
+              <dt>stack</dt>
+              <dd>{t('hero_meta_focus')}</dd>
+            </div>
+            <div class="identity-row">
+              <dt>since</dt>
+              <dd>2014</dd>
+            </div>
+            <div class="identity-row identity-row--status">
+              <dt>status</dt>
+              <dd>
+                <span class="id-status-dot" aria-hidden="true"></span>
+                {t('hero_status')}
+              </dd>
+            </div>
+          </dl>
+          <div class="identity-metrics">
+            <div class="metric">
+              <span class="metric-num">{articles.length}</span>
+              <span class="metric-lbl">posts</span>
+            </div>
+            <div class="metric">
+              <span class="metric-num">{CATEGORIES.length}</span>
+              <span class="metric-lbl">topics</span>
+            </div>
+            <div class="metric">
+              <span class="metric-num">12+</span>
+              <span class="metric-lbl">years</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-rail">
+      <div class="rail-cell">
+        <span class="rail-key">env</span>
+        <span class="rail-val">production</span>
+      </div>
+      <div class="rail-cell">
+        <span class="rail-key">region</span>
+        <span class="rail-val">sa-east-1</span>
+      </div>
+      <div class="rail-cell">
+        <span class="rail-key">latency</span>
+        <span class="rail-val">12ms</span>
+      </div>
+      <div class="rail-cell">
+        <span class="rail-key">commit</span>
+        <span class="rail-val">a3f92c1</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARTIGOS RECENTES -->
+  <section class="section" id="recent">
+    <div class="section-inner">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">
+            <span class="section-num">01</span>
+            {t('sec_recent')}
+          </h2>
+          <p class="section-sub">{t('sec_recent_sub')}</p>
+        </div>
+        <a href={`/${lang}/categories`} class="link-arrow">{t('sec_all_articles')} →</a>
+      </div>
+
+      {
+        featured && (
+          <ArticleCard
+            variant="featured"
+            title={featured.data.title}
+            description={featured.data.description}
+            slug={entrySlug(featured.id)}
+            lang={lang}
+            date={featured.data.dateFormatted[lang]}
+            readingTime={featured.data.readingTime ?? 8}
+            tags={featured.data.tags}
+            category={featured.data.category}
+            articleLang={featured.data.language}
+          />
+        )
+      }
+
+      <div class="articles-grid">
+        {
+          recent.map((article) => (
+            <ArticleCard
+              variant="card"
+              title={article.data.title}
+              description={article.data.description}
+              slug={entrySlug(article.id)}
+              lang={lang}
+              date={article.data.dateFormatted[lang]}
+              readingTime={article.data.readingTime ?? 8}
+              tags={article.data.tags}
+              category={article.data.category}
+              articleLang={article.data.language}
+            />
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIAS -->
+  <section class="section section--alt">
+    <div class="section-inner">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">
+            <span class="section-num">02</span>
+            {t('sec_categories')}
+          </h2>
+          <p class="section-sub">{t('sec_categories_sub')}</p>
+        </div>
+      </div>
+      <div class="categories-grid">
+        {
+          CATEGORIES.map((cat) => (
+            <CategoryPill
+              variant="card"
+              id={cat.id}
+              label={cat[lang]}
+              count={counts[cat.id] ?? 0}
+              lang={lang}
+            />
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ── Hero ── */
+  .hero {
+    padding: 80px var(--pad-x) 64px;
+    position: relative;
+    max-width: calc(var(--max-w) + 2 * var(--pad-x));
+    margin: 0 auto;
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 56px;
+    align-items: end;
+    margin-bottom: 56px;
+  }
+
+  .hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    padding: 6px 12px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    margin-bottom: 28px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    display: inline-block;
+    animation: pulse 2.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+    50% { box-shadow: 0 0 0 6px transparent; }
+  }
+
+  .hero-title {
+    font-family: var(--font-hero);
+    font-weight: 500;
+    font-variation-settings: 'SOFT' 100, 'opsz' 144;
+    font-size: clamp(56px, 9vw, 112px);
+    line-height: 1;
+    letter-spacing: -0.025em;
+    margin: 0 0 24px;
+  }
+
+  .hero-name {
+    background: linear-gradient(180deg, var(--ink) 0%, var(--ink) 70%, var(--ink-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero-tag {
+    font-size: clamp(17px, 1.4vw, 20px);
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 56ch;
+    margin: 0 0 36px;
+  }
+
+  .hero-cta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .hero-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+
+  .status-dot-sm {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* Identity card */
+  .identity-card {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 20px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .identity-card::before {
+    content: '// identity';
+    position: absolute;
+    top: -10px;
+    left: 14px;
+    background: var(--paper);
+    padding: 0 8px;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  .identity-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 0;
+  }
+
+  .identity-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .identity-row dt {
+    color: var(--ink-3);
+    min-width: 44px;
+  }
+
+  .identity-row--status dd {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent-ink);
+  }
+
+  [data-theme="dark"] .identity-row--status dd {
+    color: var(--accent);
+  }
+
+  .id-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+    display: inline-block;
+    flex-shrink: 0;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+
+  .identity-row dd {
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .identity-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metric-num {
+    font-size: 22px;
+    color: var(--ink);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .metric-lbl {
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* Hero rail */
+  .hero-rail {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background: var(--paper-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .rail-cell {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 16px;
+    border-right: 1px solid var(--line);
+    flex: 1;
+  }
+
+  .rail-cell:last-child {
+    border-right: none;
+  }
+
+  .rail-key {
+    color: var(--ink-3);
+  }
+
+  .rail-val {
+    color: var(--ink);
+  }
+
+  /* ── Sections ── */
+  .section {
+    padding: var(--gap-sec) 0;
+  }
+
+  .section--alt {
+    background: var(--paper-2);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .section-inner {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 0 var(--pad-x);
+  }
+
+  .section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .section-title {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 14px;
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: clamp(28px, 3vw, 40px);
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .section-num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  [data-theme="dark"] .section-num {
+    color: var(--accent);
+  }
+
+  .section-sub {
+    margin: 8px 0 0;
+    color: var(--ink-3);
+    font-size: 15px;
+    max-width: 60ch;
+  }
+
+  .link-arrow {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-2);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0;
+    white-space: nowrap;
+    transition: color 0.15s, gap 0.15s;
+  }
+
+  .link-arrow:hover {
+    color: var(--accent);
+    gap: 10px;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 0;
+  }
+
+  .categories-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: 1024px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .hero-right {
+      display: none;
+    }
+
+    .categories-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .hero-rail {
+      flex-wrap: wrap;
+    }
+
+    .rail-cell {
+      border-bottom: 1px solid var(--line);
+      min-width: 40%;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .categories-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .section-head {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .hero-rail {
+      display: none;
+    }
+  }
+</style>

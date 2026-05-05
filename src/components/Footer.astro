@@ -1,0 +1,131 @@
+---
+import Logo from './Logo.astro';
+import { useTranslations } from '@/i18n/strings';
+
+interface Props {
+  lang: 'pt' | 'en';
+}
+
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <Logo lang={lang} />
+      <p class="footer-tag">{t('footer_tag')}</p>
+    </div>
+
+    <nav class="footer-cols">
+      <div class="footer-col">
+        <h4 class="footer-col-title">Links</h4>
+        <ul>
+          <li><a href={`/${lang}`}>{t('nav_home')}</a></li>
+          <li><a href={`/${lang}/categories`}>{t('nav_categories')}</a></li>
+          <li><a href={`/${lang}/about`}>{t('nav_about')}</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-col-title">{t('footer_rss')}</h4>
+        <ul>
+          <li><a href={`/${lang}/rss.xml`}>RSS Feed</a></li>
+          <li>
+            <a href="mailto:vicfelipe@live.com">{t('footer_email')}</a>
+          </li>
+          <li>
+            <a href="https://github.com/victoralencastro" target="_blank" rel="noopener noreferrer"
+              >GitHub</a
+            >
+          </li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+
+  <div class="footer-bottom">
+    <span>{t('footer_built')}</span>
+    <span>© {year} Victor Alencastro</span>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--line);
+    background: var(--paper-2);
+    margin-top: auto;
+  }
+
+  .footer-inner {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 56px var(--pad-x) 32px;
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 48px;
+  }
+
+  .footer-tag {
+    font-size: 14px;
+    color: var(--ink-3);
+    max-width: 36ch;
+    margin: 14px 0 0;
+  }
+
+  .footer-cols {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+  }
+
+  .footer-col-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    margin: 0 0 12px;
+  }
+
+  .footer-cols ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .footer-cols a {
+    text-decoration: none;
+    color: var(--ink-2);
+    font-size: 13.5px;
+    transition: color 0.15s;
+  }
+
+  .footer-cols a:hover {
+    color: var(--accent);
+  }
+
+  .footer-bottom {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 16px var(--pad-x);
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+  }
+
+  @media (max-width: 720px) {
+    .footer-inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

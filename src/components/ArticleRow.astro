@@ -1,0 +1,156 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  slug: string;
+  lang: 'pt' | 'en';
+  date: string;
+  readingTime: number;
+  tags: string[];
+  category: string;
+  articleLang: 'pt' | 'en';
+}
+
+const { title, description, slug, lang, date, readingTime, tags, category, articleLang } =
+  Astro.props;
+---
+
+<a href={`/${lang}/posts/${slug}`} class="article-row">
+  <time class="article-row__date">{date}</time>
+
+  <div class="article-row__main">
+    <h3 class="article-row__title">{title}</h3>
+    <p class="article-row__excerpt">{description}</p>
+    <div class="article-row__tags">
+      {tags.slice(0, 3).map((tag) => <span class="tag">{tag}</span>)}
+    </div>
+  </div>
+
+  <div class="article-row__meta">
+    <span>{category}</span>
+    <span>{readingTime} min</span>
+    {articleLang !== lang && <span class="lang-badge">{articleLang.toUpperCase()}</span>}
+  </div>
+
+  <span class="article-row__arrow" aria-hidden="true">→</span>
+</a>
+
+<style>
+  .article-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 200px 24px;
+    gap: 24px;
+    align-items: start;
+    padding: 22px 16px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.15s;
+    border-radius: var(--r-sm);
+  }
+
+  .article-row:last-child {
+    border-bottom: none;
+  }
+
+  .article-row:hover {
+    background: var(--paper-2);
+  }
+
+  .article-row__date {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-4);
+    padding-top: 3px;
+  }
+
+  .article-row__title {
+    font-family: var(--font-serif);
+    font-size: 19px;
+    letter-spacing: -0.015em;
+    line-height: 1.3;
+    color: var(--ink);
+    margin: 0 0 4px;
+    transition: color 0.15s;
+  }
+
+  .article-row:hover .article-row__title {
+    color: var(--accent-ink);
+  }
+
+  [data-theme="dark"] .article-row:hover .article-row__title {
+    color: var(--accent);
+  }
+
+  .article-row__excerpt {
+    font-size: 13.5px;
+    color: var(--ink-3);
+    line-height: 1.5;
+    margin: 0 0 8px;
+  }
+
+  .article-row__tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .article-row__meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+  }
+
+  .article-row__arrow {
+    color: var(--ink-4);
+    font-size: 16px;
+    transition: color 0.15s, transform 0.15s;
+    padding-top: 2px;
+  }
+
+  .article-row:hover .article-row__arrow {
+    color: var(--accent);
+    transform: translateX(3px);
+  }
+
+  .lang-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    font-family: var(--font-mono);
+  }
+
+  [data-theme="dark"] .lang-badge {
+    color: var(--accent);
+  }
+
+  @media (max-width: 1024px) {
+    .article-row {
+      grid-template-columns: 130px 1fr 24px;
+    }
+
+    .article-row__meta {
+      display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .article-row {
+      grid-template-columns: 1fr 24px;
+      padding: 16px 8px;
+    }
+
+    .article-row__date {
+      display: none;
+    }
+  }
+</style>

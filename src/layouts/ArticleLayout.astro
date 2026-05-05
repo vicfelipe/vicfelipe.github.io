@@ -1,0 +1,83 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import TOC from '@/components/TOC.astro';
+import type { CollectionEntry } from 'astro:content';
+import { entrySlug } from '@/lib/utils';
+
+interface Props {
+  article: CollectionEntry<'pt-articles'> | CollectionEntry<'en-articles'>;
+  lang: 'pt' | 'en';
+  headings: { depth: number; text: string; slug: string }[];
+}
+
+const { article, lang, headings } = Astro.props;
+const { title, description, date } = article.data;
+
+const siteUrl = 'https://victorcode.dev';
+const canonicalUrl = `${siteUrl}/${lang}/posts/${entrySlug(article.id)}`;
+
+const schemaOrg = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: title,
+  description: description,
+  datePublished: date,
+  author: {
+    '@type': 'Person',
+    name: 'Victor Alencastro',
+    url: `${siteUrl}/pt/about`,
+  },
+});
+---
+
+<BaseLayout
+  title={`${title} — Victor Alencastro`}
+  description={description}
+  lang={lang}
+  canonicalUrl={canonicalUrl}
+  ogType="article"
+  schemaOrg={schemaOrg}
+>
+  <div class="article-container">
+    <aside class="article-toc">
+      <TOC headings={headings} lang={lang} />
+    </aside>
+
+    <article class="article-body">
+      <slot />
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .article-container {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 0 var(--pad-x);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 64px;
+    align-items: start;
+    padding-top: 64px;
+    padding-bottom: var(--gap-sec);
+  }
+
+  .article-toc {
+    position: sticky;
+    top: 96px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  @media (max-width: 1024px) {
+    .article-container {
+      grid-template-columns: 1fr;
+      padding-top: 40px;
+    }
+
+    .article-toc {
+      display: none;
+    }
+  }
+</style>
