@@ -1,0 +1,164 @@
+---
+title: "Otimizando processamento em lote com PL/SQL: BULK COLLECT e FORALL"
+description: "Como reduzi em 90% o tempo de processamento de 10 milhões de registros usando os recursos nativos de batch do Oracle."
+date: "2026-03-28"
+dateFormatted:
+  pt: "28 mar 2026"
+  en: "Mar 28, 2026"
+tags: ["Oracle", "PL/SQL", "Performance"]
+category: databases
+language: pt
+slug: plsql-batch
+translationKey: plsql-batch
+readingTime: 11
+---
+
+## O Contexto
+
+Em um sistema legado de ERP agrícola, havia uma rotina noturna de fechamento que processava pedidos do dia: calculava impostos, atualizava estoques e gerava lançamentos contábeis. Com o crescimento do negócio, essa rotina passou de 20 minutos para mais de 4 horas — inaceitável para uma janela de processamento noturno.
+
+O código original usava um cursor com `FETCH` linha a linha, o padrão clássico (e lento) do PL/SQL.
+
+## O Problema: Row-by-Row é Slow-by-Slow
+
+O processamento linha a linha no Oracle sofre do fenômeno chamado "context switching": cada operação SQL troca o contexto de execução entre o motor PL/SQL e o motor SQL. Em 10 milhões de registros, isso significa 10 milhões de context switches.
+
+```sql
+-- Código original: lento demais
+DECLARE
+  CURSOR c_pedidos IS
+    SELECT * FROM pedidos WHERE dt_pedido = TRUNC(SYSDATE - 1);
+  v_pedido pedidos%ROWTYPE;
+BEGIN
+  OPEN c_pedidos;
+  LOOP
+    FETCH c_pedidos INTO v_pedido;
+    EXIT WHEN c_pedidos%NOTFOUND;
+
+    -- Processa linha a linha
+    UPDATE estoques
+    SET quantidade = quantidade - v_pedido.qtd
+    WHERE produto_id = v_pedido.produto_id;
+
+    INSERT INTO lancamentos_contabeis
+    VALUES (v_pedido.pedido_id, v_pedido.valor, SYSDATE);
+  END LOOP;
+  CLOSE c_pedidos;
+  COMMIT;
+END;
+```
+
+## BULK COLLECT: Carregando em Memória
+
+O `BULK COLLECT` elimina context switches ao carregar múltiplas linhas de uma vez para coleções PL/SQL. O segredo está no parâmetro `LIMIT`:
+
+```sql
+DECLARE
+  TYPE t_pedidos IS TABLE OF pedidos%ROWTYPE;
+  v_pedidos t_pedidos;
+  CURSOR c_pedidos IS
+    SELECT * FROM pedidos WHERE dt_pedido = TRUNC(SYSDATE - 1);
+  v_batch_size CONSTANT PLS_INTEGER := 1000;
+BEGIN
+  OPEN c_pedidos;
+  LOOP
+    FETCH c_pedidos BULK COLLECT INTO v_pedidos LIMIT v_batch_size;
+    EXIT WHEN v_pedidos.COUNT = 0;
+
+    -- Processa o batch inteiro
+    processar_batch(v_pedidos);
+
+    COMMIT;
+  END LOOP;
+  CLOSE c_pedidos;
+END;
+```
+
+O `LIMIT 1000` é crítico: sem ele, o Oracle carrega **todos** os registros em memória de uma vez — potencial para OOM em tabelas grandes.
+
+## FORALL: DML em Lote
+
+O `FORALL` é o complemento do `BULK COLLECT` para operações DML. Em vez de iterar sobre a coleção com um loop, o `FORALL` envia todas as operações para o motor SQL de uma vez:
+
+```sql
+CREATE OR REPLACE PROCEDURE processar_batch(p_pedidos IN t_pedidos) AS
+  TYPE t_ids IS TABLE OF pedidos.pedido_id%TYPE;
+  TYPE t_qtds IS TABLE OF pedidos.qtd%TYPE;
+  TYPE t_prods IS TABLE OF pedidos.produto_id%TYPE;
+
+  v_ids   t_ids   := t_ids();
+  v_qtds  t_qtds  := t_qtds();
+  v_prods t_prods := t_prods();
+BEGIN
+  -- Preparar coleções para FORALL
+  v_ids.EXTEND(p_pedidos.COUNT);
+  v_qtds.EXTEND(p_pedidos.COUNT);
+  v_prods.EXTEND(p_pedidos.COUNT);
+
+  FOR i IN 1..p_pedidos.COUNT LOOP
+    v_ids(i)   := p_pedidos(i).pedido_id;
+    v_qtds(i)  := p_pedidos(i).qtd;
+    v_prods(i) := p_pedidos(i).produto_id;
+  END LOOP;
+
+  -- Um único context switch para N updates
+  FORALL i IN 1..v_prods.COUNT
+    UPDATE estoques
+    SET quantidade = quantidade - v_qtds(i)
+    WHERE produto_id = v_prods(i);
+
+  -- Um único context switch para N inserts
+  FORALL i IN 1..v_ids.COUNT
+    INSERT INTO lancamentos_contabeis
+    SELECT v_ids(i), valor, SYSDATE
+    FROM pedidos
+    WHERE pedido_id = v_ids(i);
+
+END processar_batch;
+```
+
+## Tratamento de Erros com SAVE EXCEPTIONS
+
+O `FORALL` por padrão interrompe no primeiro erro. Para processar o máximo possível e logar os erros individuais, use `SAVE EXCEPTIONS`:
+
+```sql
+FORALL i IN 1..v_prods.COUNT SAVE EXCEPTIONS
+  UPDATE estoques
+  SET quantidade = quantidade - v_qtds(i)
+  WHERE produto_id = v_prods(i);
+
+-- Capturar erros individuais
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLCODE = -24381 THEN -- DML errors array
+      FOR i IN 1..SQL%BULK_EXCEPTIONS.COUNT LOOP
+        log_erro(
+          SQL%BULK_EXCEPTIONS(i).ERROR_INDEX,
+          SQL%BULK_EXCEPTIONS(i).ERROR_CODE
+        );
+      END LOOP;
+    ELSE
+      RAISE;
+    END IF;
+```
+
+## Resultados
+
+Após a refatoração para BULK COLLECT + FORALL com batch de 1000 registros:
+
+| Métrica | Antes | Depois | Redução |
+|---|---|---|---|
+| Tempo total | 4h 12min | 23min | **91%** |
+| Context switches | ~10M | ~10k | **99.9%** |
+| UNDO gerado | 18 GB | 2.1 GB | **88%** |
+| Locks simultâneos | ~500 | ~15 | **97%** |
+
+## Calibrando o LIMIT
+
+O tamanho ideal do batch depende do ambiente:
+
+- **Muito pequeno** (< 100): pouca redução de context switches
+- **Muito grande** (> 10000): risco de OOM, locks longos, undo excessivo
+- **Sweet spot típico**: 500–2000 para tabelas com linhas < 500 bytes
+
+Use o Oracle AWR para monitorar `PGA aggregate target` e ajustar conforme a memória disponível.

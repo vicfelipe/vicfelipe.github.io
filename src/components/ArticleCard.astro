@@ -1,5 +1,6 @@
 ---
 import ArticleCover from './ArticleCover.astro';
+import { localePath } from '@/lib/utils';
 
 interface Props {
   title: string;
@@ -30,7 +31,7 @@ const {
 
 {
   variant === 'featured' ? (
-    <a href={`/${lang}/posts/${slug}`} class="featured-card">
+    <a href={localePath(lang, `/posts/${slug}`)} class="featured-card">
       <div class="featured-card__art" aria-hidden="true">
         <ArticleCover category={category} slug={slug} title={title} />
         <span class="featured-art-label">FEATURED · 01</span>
@@ -54,7 +55,7 @@ const {
       </div>
     </a>
   ) : (
-    <a href={`/${lang}/posts/${slug}`} class="article-card">
+    <a href={localePath(lang, `/posts/${slug}`)} class="article-card">
       <div class="card-cover-wrap">
         <ArticleCover category={category} slug={slug} title={title} compact={true} />
       </div>

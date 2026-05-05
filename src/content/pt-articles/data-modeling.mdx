@@ -1,0 +1,189 @@
+---
+title: "Modelagem dimensional no Oracle: star schema para analytics de e-commerce"
+description: "Como desenhamos um data warehouse dimensional para responder queries analíticas em segundos sobre um volume de 500M de registros de vendas."
+date: "2025-09-20"
+dateFormatted:
+  pt: "20 set 2025"
+  en: "Sep 20, 2025"
+tags: ["Oracle", "Data Warehouse", "SQL Analytics"]
+category: data
+language: pt
+slug: data-modeling
+translationKey: data-modeling
+readingTime: 11
+---
+
+## Por que Star Schema?
+
+Quando as queries analíticas do time de BI começaram a demorar mais de 10 minutos para calcular receita por categoria/região/período, ficou claro que o modelo OLTP (normalizado, otimizado para escrita) não servia para analytics.
+
+O star schema é o modelo canônico para data warehouses: uma tabela de fatos central cercada de tabelas de dimensão. Desnormalizado propositalmente, otimizado para leitura.
+
+## O Modelo
+
+Para analytics de e-commerce, desenhamos:
+
+```sql
+-- FATO CENTRAL: cada linha = um item de pedido
+CREATE TABLE fact_sales (
+    sale_id         NUMBER(18) GENERATED ALWAYS AS IDENTITY,
+    -- Chaves estrangeiras para dimensões
+    date_key        NUMBER(8)  NOT NULL,  -- YYYYMMDD
+    product_key     NUMBER(9)  NOT NULL,
+    customer_key    NUMBER(9)  NOT NULL,
+    seller_key      NUMBER(9)  NOT NULL,
+    channel_key     NUMBER(4)  NOT NULL,
+    -- Métricas (fatos aditivos)
+    quantity        NUMBER(7,2) NOT NULL,
+    unit_price      NUMBER(12,2) NOT NULL,
+    discount        NUMBER(12,2) DEFAULT 0,
+    net_revenue     NUMBER(14,2) NOT NULL,
+    cost            NUMBER(12,2),
+    gross_margin    NUMBER(12,2),
+    -- Metadados de ETL
+    load_date       DATE DEFAULT SYSDATE,
+    source_order_id NUMBER(18) NOT NULL,
+    CONSTRAINT pk_fact_sales PRIMARY KEY (sale_id)
+)
+PARTITION BY RANGE (date_key)
+INTERVAL (10000)  -- partição por mês (YYYYMM * 100 = YYYYMM00)
+(PARTITION p_initial VALUES LESS THAN (20230100));
+```
+
+### Dimensão de Data
+
+A dimensão de data é pré-populada para 10 anos:
+
+```sql
+CREATE TABLE dim_date (
+    date_key        NUMBER(8)   PRIMARY KEY,  -- YYYYMMDD
+    full_date       DATE        NOT NULL,
+    year            NUMBER(4)   NOT NULL,
+    quarter         NUMBER(1)   NOT NULL,
+    month           NUMBER(2)   NOT NULL,
+    month_name      VARCHAR2(20 CHAR) NOT NULL,
+    week_of_year    NUMBER(2)   NOT NULL,
+    day_of_week     NUMBER(1)   NOT NULL,
+    day_name        VARCHAR2(20 CHAR) NOT NULL,
+    is_weekend      CHAR(1)     NOT NULL,
+    is_holiday      CHAR(1)     DEFAULT 'N',
+    fiscal_year     NUMBER(4),
+    fiscal_quarter  NUMBER(1)
+);
+
+-- Popular 10 anos
+INSERT INTO dim_date
+SELECT
+    TO_NUMBER(TO_CHAR(dt, 'YYYYMMDD')) AS date_key,
+    dt AS full_date,
+    EXTRACT(YEAR FROM dt),
+    TO_NUMBER(TO_CHAR(dt, 'Q')),
+    EXTRACT(MONTH FROM dt),
+    TO_CHAR(dt, 'Month', 'NLS_DATE_LANGUAGE=PORTUGUESE'),
+    TO_NUMBER(TO_CHAR(dt, 'IW')),
+    TO_NUMBER(TO_CHAR(dt, 'D')),
+    TO_CHAR(dt, 'Day', 'NLS_DATE_LANGUAGE=PORTUGUESE'),
+    CASE WHEN TO_CHAR(dt, 'D') IN ('1','7') THEN 'S' ELSE 'N' END
+FROM (
+    SELECT DATE '2020-01-01' + LEVEL - 1 AS dt
+    FROM DUAL
+    CONNECT BY LEVEL <= 3650
+);
+```
+
+## Consultas Analíticas com Window Functions
+
+O poder do modelo dimensional fica evidente nas queries analíticas:
+
+```sql
+-- Receita por categoria, com YoY comparison
+SELECT
+    p.category,
+    d.year,
+    d.month,
+    SUM(f.net_revenue) AS monthly_revenue,
+    LAG(SUM(f.net_revenue), 12) OVER (
+        PARTITION BY p.category
+        ORDER BY d.year, d.month
+    ) AS revenue_same_month_last_year,
+    ROUND(
+        (SUM(f.net_revenue) - LAG(SUM(f.net_revenue), 12) OVER (
+            PARTITION BY p.category ORDER BY d.year, d.month
+        )) /
+        NULLIF(LAG(SUM(f.net_revenue), 12) OVER (
+            PARTITION BY p.category ORDER BY d.year, d.month
+        ), 0) * 100, 2
+    ) AS yoy_growth_pct
+FROM fact_sales f
+JOIN dim_date d ON f.date_key = d.date_key
+JOIN dim_product p ON f.product_key = p.product_key
+WHERE d.year IN (2024, 2025)
+GROUP BY p.category, d.year, d.month
+ORDER BY p.category, d.year, d.month;
+```
+
+## Materialização com Bitmap Indexes
+
+Para dimensões de baixa cardinalidade (canal de venda: 5 valores, status de pagamento: 8 valores), bitmap indexes são drasticamente mais eficientes:
+
+```sql
+-- Bitmap index para coluna de baixa cardinalidade
+CREATE BITMAP INDEX bix_sales_channel ON fact_sales(channel_key);
+CREATE BITMAP INDEX bix_sales_date_month ON fact_sales(
+    TRUNC(TO_DATE(TO_CHAR(date_key), 'YYYYMMDD'), 'MM')
+);
+```
+
+Para consultas multidimensionais, o Oracle combina múltiplos bitmap indexes com operações bitwise — muito mais eficiente que B-tree indexes para analytics.
+
+## ETL com Merge Incremental
+
+A carga diária usa `MERGE` para upsert incremental:
+
+```sql
+MERGE INTO fact_sales tgt
+USING (
+    SELECT
+        TO_NUMBER(TO_CHAR(o.order_date, 'YYYYMMDD')) AS date_key,
+        p.product_key,
+        c.customer_key,
+        ch.channel_key,
+        oi.quantity,
+        oi.unit_price,
+        oi.discount_amount,
+        oi.unit_price * oi.quantity - oi.discount_amount AS net_revenue,
+        oi.order_item_id AS source_order_id
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN dim_product p ON oi.product_id = p.source_product_id
+    JOIN dim_customer c ON o.customer_id = c.source_customer_id
+    JOIN dim_channel ch ON o.channel = ch.channel_code
+    WHERE o.order_date >= TRUNC(SYSDATE - 1)
+) src
+ON (tgt.source_order_id = src.source_order_id)
+WHEN MATCHED THEN UPDATE SET
+    tgt.net_revenue = src.net_revenue,
+    tgt.quantity = src.quantity,
+    tgt.load_date = SYSDATE
+WHEN NOT MATCHED THEN INSERT (
+    date_key, product_key, customer_key, channel_key,
+    quantity, unit_price, discount, net_revenue, source_order_id
+) VALUES (
+    src.date_key, src.product_key, src.customer_key, src.channel_key,
+    src.quantity, src.unit_price, src.discount_amount,
+    src.net_revenue, src.source_order_id
+);
+```
+
+## Performance no Mundo Real
+
+Com 500M de linhas na `fact_sales`:
+
+| Query | Antes (OLTP) | Depois (Star Schema) |
+|---|---|---|
+| Receita mensal por categoria | 12 min | 3.2s |
+| Top 100 produtos por margem | 8 min | 1.8s |
+| Análise de cohort de clientes | Timeout | 45s |
+| Dashboard executivo diário | 15 min | 8s |
+
+O star schema com particionamento por data e bitmap indexes transformou o que era inviável em produção rotineira do BI.

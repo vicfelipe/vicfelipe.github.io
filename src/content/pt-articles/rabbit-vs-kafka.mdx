@@ -1,0 +1,142 @@
+---
+title: "RabbitMQ vs Kafka: escolhendo a ferramenta certa para cada padrão de mensageria"
+description: "Um guia prático para decidir entre RabbitMQ e Kafka baseado em casos de uso reais, não em benchmarks sintéticos."
+date: "2025-12-10"
+dateFormatted:
+  pt: "10 dez 2025"
+  en: "Dec 10, 2025"
+tags: ["Kafka", "RabbitMQ", "Arquitetura"]
+category: platform
+language: pt
+slug: rabbit-vs-kafka
+translationKey: rabbit-vs-kafka
+readingTime: 10
+---
+
+## A Pergunta Errada
+
+Quando alguém pergunta "RabbitMQ ou Kafka?", a resposta correta é quase sempre "depende do que você precisa fazer". Mas essa resposta é frustrante. Então vamos ser mais concretos.
+
+Depois de operar ambos em produção — RabbitMQ por 4 anos na Agross e Kafka por 3 anos na americanas s.a. — tenho uma framework clara para decidir.
+
+## O Modelo Mental
+
+**RabbitMQ** é um message broker: você entrega uma mensagem para ser processada **uma vez**, por **um consumer**, e depois a mensagem some. É como um sistema de tarefas.
+
+**Kafka** é um log distribuído: você publica eventos que ficam armazenados por um período configurável, e múltiplos consumers independentes podem lê-los. É como um banco de dados de eventos.
+
+## Quando Usar RabbitMQ
+
+### Comandos e Tarefas
+
+Quando você precisa que uma ação seja executada exatamente uma vez por um worker específico:
+
+```java
+// Worker de envio de email — cada email deve ser enviado UMA vez
+@RabbitListener(queues = "email.queue")
+public void sendEmail(EmailCommand cmd) {
+    emailService.send(cmd.getTo(), cmd.getSubject(), cmd.getBody());
+    // Auto-ack após processamento bem-sucedido
+}
+```
+
+### Roteamento Complexo
+
+O RabbitMQ tem um sistema de exchanges e bindings muito mais expressivo que o Kafka:
+
+```java
+// Topic Exchange: roteamento baseado em padrão
+rabbitTemplate.convertAndSend(
+    "notifications.exchange",
+    "brazil.premium.order",  // routing key
+    notification
+);
+
+// Consumers podem se inscrever em padrões:
+// "brazil.#" - tudo do Brasil
+// "*.premium.*" - só clientes premium
+// "#.order" - todos os pedidos
+```
+
+### Filas Prioritárias
+
+RabbitMQ suporta prioridade nativamente:
+
+```java
+Map<String, Object> args = new HashMap<>();
+args.put("x-max-priority", 10);
+// declara fila com 10 níveis de prioridade
+
+// Pedidos VIP com prioridade alta
+rabbitTemplate.convertAndSend("orders.queue",
+    order,
+    message -> {
+        message.getMessageProperties().setPriority(8);
+        return message;
+    });
+```
+
+## Quando Usar Kafka
+
+### Event Sourcing e Audit Log
+
+O Kafka mantém histórico por design. Perfeito para casos onde você precisa reprocessar eventos passados:
+
+```java
+// Múltiplos consumers independentes lendo o mesmo tópico
+@KafkaListener(topics = "orders", groupId = "order-analytics")
+public void updateAnalytics(OrderEvent event) { ... }
+
+@KafkaListener(topics = "orders", groupId = "inventory-sync")
+public void syncInventory(OrderEvent event) { ... }
+
+@KafkaListener(topics = "orders", groupId = "audit-log")
+public void logToAudit(OrderEvent event) { ... }
+```
+
+### Alta Throughput
+
+Para volumes acima de 100k mensagens/segundo, Kafka escala melhor:
+
+- Particionamento horizontal nativo
+- Consumo sequencial (sem overhead de ack por mensagem)
+- Compressão por batch
+
+### Stream Processing
+
+Integração nativa com Kafka Streams para processamento em tempo real:
+
+```java
+KStream<String, OrderEvent> orders = builder.stream("orders");
+
+// Janela de 5 minutos, contagem por categoria
+KTable<Windowed<String>, Long> orderCount = orders
+    .groupBy((key, order) -> order.getCategory())
+    .windowedBy(TimeWindows.of(Duration.ofMinutes(5)))
+    .count();
+```
+
+## A Matriz de Decisão
+
+| Característica | RabbitMQ | Kafka |
+|---|---|---|
+| Entrega garantida 1x | ✅ (com acks) | ⚠️ (at-least-once) |
+| Múltiplos consumers | ⚠️ (fan-out manual) | ✅ (consumer groups) |
+| Histórico de mensagens | ❌ (exceto dead-letter) | ✅ (retention configurável) |
+| Roteamento expressivo | ✅ (exchanges) | ⚠️ (partições) |
+| Throughput (msg/s) | ~50k | ~1M+ |
+| Latência | < 1ms | 5-15ms |
+| Curva de aprendizado | Baixa | Alta |
+
+## Na Prática: Usando os Dois
+
+Na americanas s.a., usávamos ambos com responsabilidades distintas:
+
+- **Kafka**: eventos de domínio (pedidos criados, pagamentos confirmados, estoques atualizados)
+- **RabbitMQ**: comandos de trabalho (enviar email, gerar boleto, sincronizar ERP)
+
+A fronteira era clara: se o evento precisava ser consumido por múltiplos sistemas ou reprocessado, ia para Kafka. Se era uma tarefa atômica para ser executada uma vez, ia para RabbitMQ.
+
+## Conclusão
+
+Não existe ferramenta melhor. Existe a ferramenta certa para o padrão de comunicação correto. Se você ainda não sabe qual usar, comece com RabbitMQ — é mais simples de operar e resolve 80% dos casos. Adicione Kafka quando precisar de replay de eventos, múltiplos consumers independentes ou volumes muito altos.

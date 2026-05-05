@@ -1,0 +1,167 @@
+---
+title: "Dimensional modeling in Oracle: star schema for e-commerce analytics"
+description: "How we designed a dimensional data warehouse to answer analytical queries in seconds over 500M sales records."
+date: "2025-09-20"
+dateFormatted:
+  pt: "20 set 2025"
+  en: "Sep 20, 2025"
+tags: ["Oracle", "Data Warehouse", "SQL Analytics"]
+category: data
+language: en
+slug: data-modeling
+translationKey: data-modeling
+readingTime: 11
+---
+
+## Why Star Schema?
+
+When the BI team's analytical queries started taking over 10 minutes to calculate revenue by category/region/period, it became clear that the OLTP model (normalized, write-optimized) wasn't serving analytics.
+
+The star schema is the canonical model for data warehouses: a central fact table surrounded by dimension tables. Deliberately denormalized, read-optimized.
+
+## The Model
+
+For e-commerce analytics, we designed:
+
+```sql
+-- CENTRAL FACT: each row = one order item
+CREATE TABLE fact_sales (
+    sale_id         NUMBER(18) GENERATED ALWAYS AS IDENTITY,
+    -- Foreign keys to dimensions
+    date_key        NUMBER(8)  NOT NULL,  -- YYYYMMDD
+    product_key     NUMBER(9)  NOT NULL,
+    customer_key    NUMBER(9)  NOT NULL,
+    seller_key      NUMBER(9)  NOT NULL,
+    channel_key     NUMBER(4)  NOT NULL,
+    -- Metrics (additive facts)
+    quantity        NUMBER(7,2) NOT NULL,
+    unit_price      NUMBER(12,2) NOT NULL,
+    discount        NUMBER(12,2) DEFAULT 0,
+    net_revenue     NUMBER(14,2) NOT NULL,
+    cost            NUMBER(12,2),
+    gross_margin    NUMBER(12,2),
+    -- ETL metadata
+    load_date       DATE DEFAULT SYSDATE,
+    source_order_id NUMBER(18) NOT NULL,
+    CONSTRAINT pk_fact_sales PRIMARY KEY (sale_id)
+)
+PARTITION BY RANGE (date_key)
+INTERVAL (10000)
+(PARTITION p_initial VALUES LESS THAN (20230100));
+```
+
+### Date Dimension
+
+The date dimension is pre-populated for 10 years:
+
+```sql
+CREATE TABLE dim_date (
+    date_key        NUMBER(8)   PRIMARY KEY,  -- YYYYMMDD
+    full_date       DATE        NOT NULL,
+    year            NUMBER(4)   NOT NULL,
+    quarter         NUMBER(1)   NOT NULL,
+    month           NUMBER(2)   NOT NULL,
+    month_name      VARCHAR2(20) NOT NULL,
+    week_of_year    NUMBER(2)   NOT NULL,
+    day_of_week     NUMBER(1)   NOT NULL,
+    day_name        VARCHAR2(20) NOT NULL,
+    is_weekend      CHAR(1)     NOT NULL,
+    is_holiday      CHAR(1)     DEFAULT 'N',
+    fiscal_year     NUMBER(4),
+    fiscal_quarter  NUMBER(1)
+);
+```
+
+## Analytical Queries with Window Functions
+
+The power of the dimensional model becomes evident in analytical queries:
+
+```sql
+-- Revenue by category, with YoY comparison
+SELECT
+    p.category,
+    d.year,
+    d.month,
+    SUM(f.net_revenue) AS monthly_revenue,
+    LAG(SUM(f.net_revenue), 12) OVER (
+        PARTITION BY p.category
+        ORDER BY d.year, d.month
+    ) AS revenue_same_month_last_year,
+    ROUND(
+        (SUM(f.net_revenue) - LAG(SUM(f.net_revenue), 12) OVER (
+            PARTITION BY p.category ORDER BY d.year, d.month
+        )) /
+        NULLIF(LAG(SUM(f.net_revenue), 12) OVER (
+            PARTITION BY p.category ORDER BY d.year, d.month
+        ), 0) * 100, 2
+    ) AS yoy_growth_pct
+FROM fact_sales f
+JOIN dim_date d ON f.date_key = d.date_key
+JOIN dim_product p ON f.product_key = p.product_key
+WHERE d.year IN (2024, 2025)
+GROUP BY p.category, d.year, d.month
+ORDER BY p.category, d.year, d.month;
+```
+
+## Bitmap Indexes for Low-Cardinality Dimensions
+
+For low-cardinality dimensions (sales channel: 5 values, payment status: 8 values), bitmap indexes are drastically more efficient:
+
+```sql
+-- Bitmap index for low-cardinality column
+CREATE BITMAP INDEX bix_sales_channel ON fact_sales(channel_key);
+```
+
+For multi-dimensional queries, Oracle combines multiple bitmap indexes with bitwise operations — much more efficient than B-tree indexes for analytics.
+
+## Incremental ETL with Merge
+
+The daily load uses `MERGE` for incremental upsert:
+
+```sql
+MERGE INTO fact_sales tgt
+USING (
+    SELECT
+        TO_NUMBER(TO_CHAR(o.order_date, 'YYYYMMDD')) AS date_key,
+        p.product_key,
+        c.customer_key,
+        ch.channel_key,
+        oi.quantity,
+        oi.unit_price,
+        oi.discount_amount,
+        oi.unit_price * oi.quantity - oi.discount_amount AS net_revenue,
+        oi.order_item_id AS source_order_id
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN dim_product p ON oi.product_id = p.source_product_id
+    JOIN dim_customer c ON o.customer_id = c.source_customer_id
+    JOIN dim_channel ch ON o.channel = ch.channel_code
+    WHERE o.order_date >= TRUNC(SYSDATE - 1)
+) src
+ON (tgt.source_order_id = src.source_order_id)
+WHEN MATCHED THEN UPDATE SET
+    tgt.net_revenue = src.net_revenue,
+    tgt.quantity = src.quantity,
+    tgt.load_date = SYSDATE
+WHEN NOT MATCHED THEN INSERT (
+    date_key, product_key, customer_key, channel_key,
+    quantity, unit_price, discount, net_revenue, source_order_id
+) VALUES (
+    src.date_key, src.product_key, src.customer_key, src.channel_key,
+    src.quantity, src.unit_price, src.discount_amount,
+    src.net_revenue, src.source_order_id
+);
+```
+
+## Real-World Performance
+
+With 500M rows in `fact_sales`:
+
+| Query | Before (OLTP) | After (Star Schema) |
+|---|---|---|
+| Monthly revenue by category | 12 min | 3.2s |
+| Top 100 products by margin | 8 min | 1.8s |
+| Customer cohort analysis | Timeout | 45s |
+| Daily executive dashboard | 15 min | 8s |
+
+The star schema with date partitioning and bitmap indexes transformed what was impractical into routine BI production.

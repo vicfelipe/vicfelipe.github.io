@@ -1,4 +1,5 @@
 ---
+import { localePath } from '@/lib/utils';
 interface Props {
   title: string;
   description: string;
@@ -15,7 +16,7 @@ const { title, description, slug, lang, date, readingTime, tags, category, artic
   Astro.props;
 ---
 
-<a href={`/${lang}/posts/${slug}`} class="article-row">
+<a href={localePath(lang, `/posts/${slug}`)} class="article-row">
   <time class="article-row__date">{date}</time>
 
   <div class="article-row__main">

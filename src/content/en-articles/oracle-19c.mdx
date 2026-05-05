@@ -1,0 +1,140 @@
+---
+title: "Migrating from Oracle 11g to 19c: real pitfalls from a production migration"
+description: "Three serious problems we encountered migrating a 2TB database from Oracle 11g to 19c, and how we solved them without extended downtime."
+date: "2025-11-05"
+dateFormatted:
+  pt: "5 nov 2025"
+  en: "Nov 5, 2025"
+tags: ["Oracle", "Migration", "DBA"]
+category: databases
+language: en
+slug: oracle-19c
+translationKey: oracle-19c
+readingTime: 13
+---
+
+## The Migration Context
+
+The main database for the americanas s.a. e-commerce platform had been running Oracle 11g since 2014. With extended support ending in January 2023, migration to 19c became a strategic priority. The database had:
+
+- 2.1 TB of data
+- 847 objects (procedures, triggers, packages)
+- 23 application schemas
+- 99.9% availability required (maximum 87h downtime/year)
+
+## Pitfall 1: Implicit Conversions in the Optimizer
+
+The first surprise came right after migration: queries that took 200ms in 11g jumped to 45 seconds in 19c. The problem was implicit conversions that the 19c optimizer handles differently.
+
+### The Problem
+
+```sql
+-- STATUS column is VARCHAR2(10)
+-- Application was passing NUMBER implicitly
+SELECT * FROM orders WHERE status = 1;  -- implicit conversion!
+```
+
+In Oracle 11g, the optimizer used the index even with the conversion. In 19c, the conversion prevents index usage and forces a full table scan on tables with 50M+ rows.
+
+### The Solution
+
+We used the 19c SQL Tuning Advisor to identify all queries with implicit conversion:
+
+```sql
+-- Identify queries with implicit conversion
+SELECT sql_id, sql_text, executions, elapsed_time
+FROM v$sql
+WHERE sql_text LIKE '%status%'
+  AND parsing_schema_name = 'ECOMMERCE'
+  AND elapsed_time/NULLIF(executions,0) > 5000000  -- > 5 second average
+ORDER BY elapsed_time DESC;
+```
+
+Oracle 19c also introduced `V$SQL_PLAN_STATISTICS_ALL` which makes execution plan analysis much easier.
+
+### Application Fix
+
+We mapped 127 problematic queries and fixed them at the application layer:
+
+```java
+// BEFORE: implicit conversion
+query.setParameter("status", 1);
+
+// AFTER: correct type
+query.setParameter("status", "ACTIVE");
+```
+
+## Pitfall 2: CHAR Semantics Deprecation
+
+Oracle 19c changed the default behavior of `LENGTH` for `VARCHAR2` columns: it now uses **byte semantics** by default instead of **char semantics**. This affected queries with multibyte characters (accented characters, for example).
+
+### The Problem
+
+```sql
+-- In 11g: "São Paulo" fits in VARCHAR2(9)
+-- In 19c with byte semantics: "São Paulo" = 10 bytes (ã = 2 UTF-8 bytes)
+-- ERROR: ORA-12899: value too large for column
+```
+
+We had 34 columns that needed size adjustment after migration.
+
+### The Solution
+
+```sql
+-- Identification script
+SELECT table_name, column_name, data_length, char_used
+FROM dba_tab_columns
+WHERE char_used = 'B'
+  AND data_type = 'VARCHAR2'
+  AND owner = 'ECOMMERCE';
+
+-- Fix: increase size or switch to CHAR semantics
+ALTER TABLE customers MODIFY (name VARCHAR2(200 CHAR));
+```
+
+## Pitfall 3: In-Memory Column Store and Memory
+
+Oracle 19c has the In-Memory Column Store enabled by default in some scenarios, consuming memory that wasn't in the planning. This caused swap on servers with 64GB RAM.
+
+### The Diagnosis
+
+```sql
+-- Check In-Memory Column Store usage
+SELECT * FROM v$inmemory_area;
+
+-- Check objects in In-Memory
+SELECT owner, segment_name, bytes_inmemory, inmemory_size
+FROM v$im_segments
+ORDER BY inmemory_size DESC;
+```
+
+### The Fix
+
+We disabled In-Memory for tables that didn't benefit from it:
+
+```sql
+-- Disable for transactional tables (heavy write)
+ALTER TABLE orders NO INMEMORY;
+ALTER TABLE order_items NO INMEMORY;
+
+-- Keep only for analytical tables (heavy read, light write)
+ALTER TABLE dim_product INMEMORY PRIORITY CRITICAL;
+```
+
+## Migration Strategy with Minimal Downtime
+
+The migration itself used **Oracle GoldenGate** for real-time replication:
+
+1. **Phase 1** (2 weeks): Set up 11g → 19c replication
+2. **Phase 2** (1 week): Data and query validation in parallel
+3. **Phase 3** (4-hour window): Cutover — redirect applications to 19c
+4. **Phase 4** (2 weeks): Reverse replication as rollback safety net
+
+Actual downtime was **47 minutes** (within the 4-hour maintenance window), with the rest of the time being connection pool reconfiguration in the applications.
+
+## Migration Lessons
+
+1. **Never trust "it's compatible"** — Oracle 19c has backward compatibility, but the optimizer changed significantly
+2. **Test at real volume** — the staging environment only had 200GB; problems appeared at the 2TB of production
+3. **GoldenGate is essential** for zero-downtime migrations of critical databases
+4. **Reserve 30% more time** than estimated for query fixes after migration

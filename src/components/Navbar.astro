@@ -3,6 +3,7 @@ import Logo from './Logo.astro';
 import LangSwitch from './LangSwitch.astro';
 import ThemeToggle from './ThemeToggle.astro';
 import { useTranslations } from '@/i18n/strings';
+import { localePath } from '@/lib/utils';
 
 interface Props {
   lang: 'pt' | 'en';
@@ -19,9 +20,9 @@ const currentPath = Astro.url.pathname;
     <Logo lang={lang} />
 
     <nav class="navbar-links" aria-label="Main navigation">
-      <a href={`/${lang}`} class="navbar-link">{t('nav_home')}</a>
-      <a href={`/${lang}/categories`} class="navbar-link">{t('nav_categories')}</a>
-      <a href={`/${lang}/about`} class="navbar-link">{t('nav_about')}</a>
+      <a href={localePath(lang, '/')} class="navbar-link">{t('nav_home')}</a>
+      <a href={localePath(lang, '/categories')} class="navbar-link">{t('nav_categories')}</a>
+      <a href={localePath(lang, '/about')} class="navbar-link">{t('nav_about')}</a>
       <a
         href="https://github.com/vicfelipe"
         target="_blank"
@@ -54,9 +55,9 @@ const currentPath = Astro.url.pathname;
     <button class="mobile-close" id="mobile-close" aria-label="Close menu">✕</button>
   </div>
   <nav class="mobile-nav">
-    <a href={`/${lang}`}>{t('nav_home')}</a>
-    <a href={`/${lang}/categories`}>{t('nav_categories')}</a>
-    <a href={`/${lang}/about`}>{t('nav_about')}</a>
+    <a href={localePath(lang, '/')}>{t('nav_home')}</a>
+    <a href={localePath(lang, '/categories')}>{t('nav_categories')}</a>
+    <a href={localePath(lang, '/about')}>{t('nav_about')}</a>
     <a href="https://github.com/vicfelipe" target="_blank" rel="noopener noreferrer">GitHub</a>
   </nav>
   <div class="mobile-foot">

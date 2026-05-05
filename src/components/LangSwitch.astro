@@ -5,12 +5,12 @@ interface Props {
 }
 
 const { lang, currentPath } = Astro.props;
-const slug = currentPath.replace(/^\/(pt|en)/, '');
+const slug = currentPath.replace(/^\/(pt|en)/, '') || '/';
 ---
 
 <div class="lang-switch" role="group" aria-label="Language">
   <a
-    href={`/pt${slug}`}
+    href={slug}
     class:list={['lang-opt', { active: lang === 'pt' }]}
     aria-current={lang === 'pt' ? 'page' : undefined}
   ><span class="lang-flag" aria-hidden="true"><svg width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg" style="border-radius:2px"><rect width="16" height="12" fill="#009c3b"/><polygon points="8,1.2 14.8,6 8,10.8 1.2,6" fill="#ffdf00"/><circle cx="8" cy="6" r="2.8" fill="#002776"/></svg></span>PT-BR</a>

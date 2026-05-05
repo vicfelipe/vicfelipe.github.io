@@ -1,0 +1,181 @@
+---
+title: "Profiling de Go em produção com pprof: encontrando vazamentos de memória em runtime"
+description: "Como usar pprof para identificar e corrigir um vazamento de goroutines que consumia 4GB de heap em uma API de alta frequência."
+date: "2026-02-20"
+dateFormatted:
+  pt: "20 fev 2026"
+  en: "Feb 20, 2026"
+tags: ["Go", "Performance", "pprof"]
+category: backend
+language: pt
+slug: go-pprof
+translationKey: go-pprof
+readingTime: 10
+---
+
+## O Sintoma
+
+O alerta do Datadog foi o primeiro sinal: nossa API de integração em Go estava consumindo 4.2GB de heap após 72 horas de execução. O GC do Go rodava a cada poucos segundos, causando latência P99 acima de 800ms — inaceitável para um serviço de integração de inventário em tempo real.
+
+A memória crescia linearmente desde o último deploy. Algum objeto estava escapando do garbage collector.
+
+## Habilitando pprof com Segurança
+
+O `net/http/pprof` expõe endpoints sensíveis. Em produção, o approach correto é um servidor HTTP separado, acessível apenas internamente:
+
+```go
+package main
+
+import (
+    "net/http"
+    _ "net/http/pprof"
+    "log"
+)
+
+func startPprofServer() {
+    // Apenas na interface interna, nunca exposta ao público
+    go func() {
+        log.Println(http.ListenAndServe("localhost:6060", nil))
+    }()
+}
+```
+
+Com port-forwarding via kubectl:
+```bash
+kubectl port-forward pod/api-xyz-123 6060:6060
+```
+
+## Análise de Heap
+
+O primeiro passo foi capturar um heap profile:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/heap
+```
+
+No interactive mode, o comando `top` mostrou imediatamente o culpado:
+
+```
+Showing nodes accounting for 3.8GB, 92.12% of 4.12GB total
+      flat  flat%   sum%        cum   cum%
+    3.1GB 75.24% 75.24%     3.1GB 75.24%  bytes.makeSlice
+   450MB 10.92% 86.16%    450MB 10.92%  strings.Builder.grow
+```
+
+`bytes.makeSlice` acumulando 3.1GB. O caminho completo (`web` command no pprof) revelou que a origem era uma função de parsing de XML.
+
+## O Vazamento
+
+O código problemático estava em um parser de notas fiscais que criava buffers mas não os liberava:
+
+```go
+// PROBLEMA: cache sem limite de tamanho
+var xmlCache = make(map[string]*bytes.Buffer)
+
+func parseNF(chaveNF string, xmlData []byte) (*NotaFiscal, error) {
+    if cached, ok := xmlCache[chaveNF]; ok {
+        return decode(cached), nil
+    }
+
+    buf := bytes.NewBuffer(make([]byte, 0, len(xmlData)*2))
+    // ... parsing ...
+
+    xmlCache[chaveNF] = buf  // nunca expira!
+    return result, nil
+}
+```
+
+Um cache de buffers sem TTL e sem limite de tamanho. A API processava ~50k notas por dia — o cache crescia indefinidamente.
+
+## A Correção
+
+Substituímos o mapa simples por um cache com capacidade máxima usando uma implementação LRU:
+
+```go
+import "github.com/hashicorp/golang-lru/v2"
+
+var xmlCache *lru.Cache[string, *NotaFiscal]
+
+func init() {
+    var err error
+    xmlCache, err = lru.New[string, *NotaFiscal](10_000) // máximo 10k entradas
+    if err != nil {
+        panic(err)
+    }
+}
+
+func parseNF(chaveNF string, xmlData []byte) (*NotaFiscal, error) {
+    if cached, ok := xmlCache.Get(chaveNF); ok {
+        return cached, nil
+    }
+
+    result, err := doParse(xmlData)
+    if err != nil {
+        return nil, err
+    }
+
+    xmlCache.Add(chaveNF, result) // LRU eviction automática
+    return result, nil
+}
+```
+
+## Análise de Goroutines
+
+Enquanto investigava, encontrei um segundo problema: goroutines acumuladas:
+
+```bash
+curl http://localhost:6060/debug/pprof/goroutine?debug=2
+```
+
+Havia 12.847 goroutines em `select` aguardando em um canal que nunca recebia dados — um goroutine leak clássico causado por contextos não cancelados:
+
+```go
+// PROBLEMA: goroutine vaza se ctx for cancelado antes do resultado
+func fetchWithRetry(ctx context.Context, url string) <-chan Result {
+    resultCh := make(chan Result)
+    go func() {
+        for i := 0; i < 3; i++ {
+            resp, err := http.Get(url)
+            resultCh <- Result{resp, err} // bloqueia se ninguém lê
+        }
+    }()
+    return resultCh
+}
+```
+
+A correção foi usar `select` com ctx para evitar o bloqueio:
+
+```go
+func fetchWithRetry(ctx context.Context, url string) <-chan Result {
+    resultCh := make(chan Result, 1) // buffered!
+    go func() {
+        defer close(resultCh)
+        for i := 0; i < 3; i++ {
+            select {
+            case <-ctx.Done():
+                return
+            default:
+            }
+            resp, err := http.Get(url)
+            select {
+            case resultCh <- Result{resp, err}:
+                return
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return resultCh
+}
+```
+
+## Resultado Final
+
+Após as duas correções:
+
+- **Heap**: estabilizou em ~180MB (era 4.2GB após 72h)
+- **Goroutines**: máximo de ~200 (eram >12k)
+- **Latência P99**: caiu de 800ms para 45ms
+- **Frequência do GC**: de 1/3s para 1/120s
+
+O pprof em produção, quando usado com cuidado, é uma ferramenta indispensável. O segredo é expô-lo apenas internamente e incorporá-lo ao processo de investigação de incidentes desde o início.

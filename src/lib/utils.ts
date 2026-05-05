@@ -1,5 +1,9 @@
 import type { CollectionEntry } from 'astro:content';
 
+export function localePath(lang: 'pt' | 'en', path: string): string {
+  return lang === 'pt' ? path : `/${lang}${path}`;
+}
+
 export function computeReadingTime(content: string): number {
   const words = content.trim().split(/\s+/).length;
   return Math.ceil(words / 200);

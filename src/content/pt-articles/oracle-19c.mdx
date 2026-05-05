@@ -1,0 +1,142 @@
+---
+title: "Migrando de Oracle 11g para 19c: armadilhas reais de uma migração em produção"
+description: "Três problemas sérios que encontramos ao migrar um banco de 2TB de Oracle 11g para 19c, e como os resolvemos sem downtime prolongado."
+date: "2025-11-05"
+dateFormatted:
+  pt: "5 nov 2025"
+  en: "Nov 5, 2025"
+tags: ["Oracle", "Migração", "DBA"]
+category: databases
+language: pt
+slug: oracle-19c
+translationKey: oracle-19c
+readingTime: 13
+---
+
+## O Contexto da Migração
+
+O banco de dados principal da plataforma de e-commerce da americanas s.a. rodava Oracle 11g desde 2014. Com o fim do suporte estendido em janeiro de 2023, a migração para 19c tornou-se prioridade estratégica. O banco tinha:
+
+- 2.1 TB de dados
+- 847 objetos (procedures, triggers, packages)
+- 23 schemas de aplicação
+- 99.9% de disponibilidade exigida (máximo 87h de downtime/ano)
+
+## Armadilha 1: Implicit Conversions no Optimizer
+
+A primeira surpresa veio logo após a migração: queries que levavam 200ms no 11g passaram para 45 segundos no 19c. O problema era conversões implícitas que o otimizador do 19c trata diferentemente.
+
+### O Problema
+
+```sql
+-- Coluna STATUS é VARCHAR2(10)
+-- Aplicação passava NUMBER implicitamente
+SELECT * FROM pedidos WHERE status = 1;  -- conversão implícita!
+```
+
+No Oracle 11g, o otimizador usava o índice mesmo com a conversão. No 19c, a conversão impede o uso do índice e força um full table scan em tabelas de 50M+ linhas.
+
+### A Solução
+
+Usamos o SQL Tuning Advisor do 19c para identificar todas as queries com conversão implícita:
+
+```sql
+-- Identificar queries com conversão implícita
+SELECT sql_id, sql_text, executions, elapsed_time
+FROM v$sql
+WHERE sql_text LIKE '%status%'
+  AND parsing_schema_name = 'ECOMMERCE'
+  AND elapsed_time/NULLIF(executions,0) > 5000000  -- > 5 segundos médio
+ORDER BY elapsed_time DESC;
+```
+
+O Oracle 19c também introduziu uma nova view `V$SQL_PLAN_STATISTICS_ALL` que facilita muito a análise de planos de execução.
+
+### Correção nas Aplicações
+
+Mapeamos 127 queries problemáticas e as corrigimos na camada de aplicação:
+
+```java
+// ANTES: conversão implícita
+query.setParameter("status", 1);
+
+// DEPOIS: tipo correto
+query.setParameter("status", "ATIVO");
+```
+
+Para as queries em código legado PL/SQL, criamos um script de migração automática usando o pacote `DBMS_ADVANCED_REWRITE`.
+
+## Armadilha 2: Deprecação do CHAR Semantics
+
+O Oracle 19c mudou o comportamento padrão de `LENGTH` para colunas `VARCHAR2`: agora usa **byte semantics** por padrão em vez de **char semantics**. Isso afetou queries com caracteres multibyte (acentos, por exemplo).
+
+### O Problema
+
+```sql
+-- No 11g: "São Paulo" cabe em VARCHAR2(9)
+-- No 19c com byte semantics: "São Paulo" = 10 bytes (ã = 2 bytes UTF-8)
+-- ERRO: ORA-12899: value too large for column
+```
+
+Tivemos 34 colunas que precisavam de ajuste de tamanho após a migração.
+
+### A Solução
+
+```sql
+-- Script de identificação
+SELECT table_name, column_name, data_length, char_used
+FROM dba_tab_columns
+WHERE char_used = 'B'
+  AND data_type = 'VARCHAR2'
+  AND owner = 'ECOMMERCE';
+
+-- Correção: aumentar tamanho ou mudar para CHAR semantics
+ALTER TABLE clientes MODIFY (nome VARCHAR2(200 CHAR));
+```
+
+## Armadilha 3: In-Memory Column Store e Memória
+
+O Oracle 19c tem o In-Memory Column Store ativado por padrão em alguns cenários, consumindo memória que não estava no planejamento. Isso causou swap em servidores com 64GB de RAM.
+
+### O Diagnóstico
+
+```sql
+-- Verificar uso do In-Memory Column Store
+SELECT * FROM v$inmemory_area;
+
+-- Verificar objetos no In-Memory
+SELECT owner, segment_name, bytes_inmemory, inmemory_size
+FROM v$im_segments
+ORDER BY inmemory_size DESC;
+```
+
+### A Correção
+
+Desativamos o In-Memory para as tabelas que não se beneficiavam:
+
+```sql
+-- Desativar para tabelas transacionais (muita escrita)
+ALTER TABLE pedidos NO INMEMORY;
+ALTER TABLE itens_pedido NO INMEMORY;
+
+-- Manter apenas para tabelas analíticas (muito lidas, pouco escritas)
+ALTER TABLE dim_produto INMEMORY PRIORITY CRITICAL;
+```
+
+## Estratégia de Migração com Mínimo Downtime
+
+A migração em si usou o **Oracle GoldenGate** para replicação em tempo real:
+
+1. **Fase 1** (2 semanas): Configurar replicação 11g → 19c
+2. **Fase 2** (1 semana): Validação de dados e queries em paralelo
+3. **Fase 3** (janela de 4 horas): Cutover — redirecionar aplicações para o 19c
+4. **Fase 4** (2 semanas): Replicação reversa como rollback de segurança
+
+O downtime real foi de **47 minutos** (dentro da janela de manutenção de 4 horas), com o restante do tempo sendo apenas a reconfiguração do connection pool nas aplicações.
+
+## Lições da Migração
+
+1. **Nunca confie que "é compatível"** — Oracle 19c tem compatibilidade retroativa, mas o otimizador mudou muito
+2. **Teste em volume real** — o ambiente de homologação tinha apenas 200GB; os problemas apareceram nos 2TB de produção
+3. **GoldenGate é indispensável** para migrações zero-downtime de bancos críticos
+4. **Reserve 30% mais tempo** do que o estimado para correção de queries após a migração

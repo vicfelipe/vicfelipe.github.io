@@ -1,11 +1,12 @@
 ---
+import { localePath } from '@/lib/utils';
 interface Props {
   lang: 'pt' | 'en';
 }
 const { lang } = Astro.props;
 ---
 
-<a href={`/${lang}`} class="logo" aria-label="Victor Alencastro — Home">
+<a href={localePath(lang, '/')} class="logo" aria-label="Victor Alencastro — Home">
   <span class="logo-mark">
     <span class="logo-bracket">{`{`}</span>
     <span class="logo-dot"></span>

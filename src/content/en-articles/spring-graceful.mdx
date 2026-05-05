@@ -1,0 +1,133 @@
+---
+title: "Spring Boot graceful shutdown: draining traffic before killing the process"
+description: "How to configure Spring Boot to drain in-flight requests before a SIGTERM, eliminating 502 errors during rolling deployments."
+date: "2026-03-15"
+dateFormatted:
+  pt: "15 mar 2026"
+  en: "Mar 15, 2026"
+tags: ["Spring Boot", "Kubernetes", "DevOps"]
+category: backend
+language: en
+slug: spring-graceful
+translationKey: spring-graceful
+readingTime: 8
+---
+
+## The 502 Problem During Deploys
+
+Every time we deployed to Kubernetes, Datadog showed a spike of 502 errors for about 30 seconds. The cause: Kubernetes was sending traffic to a pod already receiving the SIGTERM to be terminated.
+
+The problematic flow was:
+1. Kubernetes decides to remove the pod (new deploy or scale-down)
+2. Sends SIGTERM to the process
+3. Spring Boot begins shutdown **immediately**
+4. Load balancer still has the pod as healthy for a few seconds
+5. New requests arrive at a server that's shutting down
+6. 502 Bad Gateway
+
+## The Three-Layer Solution
+
+### Layer 1: Graceful Shutdown in Spring Boot
+
+Since Spring Boot 2.3, graceful shutdown is available as configuration:
+
+```yaml
+# application.yml
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+```
+
+With this, upon receiving SIGTERM, Spring Boot:
+1. Stops accepting **new** requests
+2. Waits for in-flight requests to complete
+3. Shuts down after timeout or when all complete
+
+### Layer 2: PreStop Hook in Kubernetes
+
+The problem is that Kubernetes sends traffic until it receives a negative health check response. To create a window between SIGTERM and routing stopping, we added a `preStop` hook:
+
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 5"]
+```
+
+This `sleep 5` gives Kubernetes time to propagate the endpoint removal from the Service before SIGTERM reaches the Java process.
+
+### Layer 3: Custom Readiness Endpoint
+
+For finer control, we created a custom `/actuator/health/readiness` endpoint that we can manipulate programmatically:
+
+```java
+@Component
+public class GracefulShutdownHealthIndicator implements HealthIndicator {
+
+    private final AtomicBoolean accepting = new AtomicBoolean(true);
+
+    @EventListener
+    public void onContextClosing(ContextClosedEvent event) {
+        accepting.set(false);
+        log.info("Marked as not ready — draining in-flight requests");
+    }
+
+    @Override
+    public Health health() {
+        return accepting.get()
+            ? Health.up().build()
+            : Health.down().withDetail("reason", "shutting down").build();
+    }
+}
+```
+
+## Full Kubernetes Configuration
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: api
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+```
+
+## Result
+
+After implementing the three layers:
+
+- **502 errors during deploy**: from ~15 per deploy to **zero**
+- **Downtime**: from 30s to **< 1s** (rolling update only)
+- **Deploy SLA**: maintained above 99.95% monthly
+
+The `terminationGracePeriodSeconds: 60` is the ceiling — if requests don't finish in 60 seconds, Kubernetes force-kills with SIGKILL. For APIs with a 30s timeout, this margin is sufficient.
+
+## Common Pitfalls
+
+**Don't confuse liveness with readiness.** The liveness probe restarts the pod if it fails. Readiness only removes the pod from routing. During shutdown, only readiness should be marked as `down`.
+
+**WebSockets and streaming need special attention.** Long-lived connections aren't drained automatically — you need custom logic to close them gracefully.
+
+**Clients with aggressive retry** can mask the problem without actually solving it. Implement graceful shutdown on the server even if clients do retry.

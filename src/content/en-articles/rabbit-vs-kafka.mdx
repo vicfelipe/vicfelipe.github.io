@@ -1,0 +1,141 @@
+---
+title: "RabbitMQ vs Kafka: choosing the right tool for each messaging pattern"
+description: "A practical guide for deciding between RabbitMQ and Kafka based on real use cases, not synthetic benchmarks."
+date: "2025-12-10"
+dateFormatted:
+  pt: "10 dez 2025"
+  en: "Dec 10, 2025"
+tags: ["Kafka", "RabbitMQ", "Architecture"]
+category: platform
+language: en
+slug: rabbit-vs-kafka
+translationKey: rabbit-vs-kafka
+readingTime: 10
+---
+
+## The Wrong Question
+
+When someone asks "RabbitMQ or Kafka?", the correct answer is almost always "it depends on what you need to do." But that answer is frustrating. So let's be more concrete.
+
+After operating both in production — RabbitMQ for 4 years at Agross and Kafka for 3 years at americanas s.a. — I have a clear framework for deciding.
+
+## The Mental Model
+
+**RabbitMQ** is a message broker: you deliver a message to be processed **once**, by **one consumer**, and then the message is gone. It's like a task queue system.
+
+**Kafka** is a distributed log: you publish events that are stored for a configurable retention period, and multiple independent consumers can read them. It's like an event database.
+
+## When to Use RabbitMQ
+
+### Commands and Tasks
+
+When you need an action to be executed exactly once by a specific worker:
+
+```java
+// Email sending worker — each email must be sent ONCE
+@RabbitListener(queues = "email.queue")
+public void sendEmail(EmailCommand cmd) {
+    emailService.send(cmd.getTo(), cmd.getSubject(), cmd.getBody());
+    // Auto-ack after successful processing
+}
+```
+
+### Complex Routing
+
+RabbitMQ has a much more expressive exchange and binding system than Kafka:
+
+```java
+// Topic Exchange: pattern-based routing
+rabbitTemplate.convertAndSend(
+    "notifications.exchange",
+    "brazil.premium.order",  // routing key
+    notification
+);
+
+// Consumers can subscribe to patterns:
+// "brazil.#" - everything from Brazil
+// "*.premium.*" - premium customers only
+// "#.order" - all orders
+```
+
+### Priority Queues
+
+RabbitMQ supports priority natively:
+
+```java
+Map<String, Object> args = new HashMap<>();
+args.put("x-max-priority", 10);
+
+// VIP orders with high priority
+rabbitTemplate.convertAndSend("orders.queue",
+    order,
+    message -> {
+        message.getMessageProperties().setPriority(8);
+        return message;
+    });
+```
+
+## When to Use Kafka
+
+### Event Sourcing and Audit Log
+
+Kafka maintains history by design. Perfect for cases where you need to reprocess past events:
+
+```java
+// Multiple independent consumers reading the same topic
+@KafkaListener(topics = "orders", groupId = "order-analytics")
+public void updateAnalytics(OrderEvent event) { ... }
+
+@KafkaListener(topics = "orders", groupId = "inventory-sync")
+public void syncInventory(OrderEvent event) { ... }
+
+@KafkaListener(topics = "orders", groupId = "audit-log")
+public void logToAudit(OrderEvent event) { ... }
+```
+
+### High Throughput
+
+For volumes above 100k messages/second, Kafka scales better:
+
+- Native horizontal partitioning
+- Sequential consumption (no per-message ack overhead)
+- Batch compression
+
+### Stream Processing
+
+Native integration with Kafka Streams for real-time processing:
+
+```java
+KStream<String, OrderEvent> orders = builder.stream("orders");
+
+// 5-minute window, count by category
+KTable<Windowed<String>, Long> orderCount = orders
+    .groupBy((key, order) -> order.getCategory())
+    .windowedBy(TimeWindows.of(Duration.ofMinutes(5)))
+    .count();
+```
+
+## The Decision Matrix
+
+| Feature | RabbitMQ | Kafka |
+|---|---|---|
+| Guaranteed once delivery | ✅ (with acks) | ⚠️ (at-least-once) |
+| Multiple consumers | ⚠️ (manual fan-out) | ✅ (consumer groups) |
+| Message history | ❌ (except dead-letter) | ✅ (configurable retention) |
+| Expressive routing | ✅ (exchanges) | ⚠️ (partitions) |
+| Throughput (msg/s) | ~50k | ~1M+ |
+| Latency | < 1ms | 5-15ms |
+| Learning curve | Low | High |
+
+## In Practice: Using Both
+
+At americanas s.a., we used both with distinct responsibilities:
+
+- **Kafka**: domain events (orders created, payments confirmed, inventory updated)
+- **RabbitMQ**: work commands (send email, generate payment slip, sync ERP)
+
+The boundary was clear: if the event needed to be consumed by multiple systems or replayed, it went to Kafka. If it was an atomic task to be executed once, it went to RabbitMQ.
+
+## Conclusion
+
+There's no better tool. There's the right tool for the right communication pattern. If you still don't know which to use, start with RabbitMQ — it's simpler to operate and solves 80% of cases. Add Kafka when you need event replay, multiple independent consumers, or very high volumes.

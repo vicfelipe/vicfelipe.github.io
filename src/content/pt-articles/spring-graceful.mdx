@@ -1,0 +1,133 @@
+---
+title: "Shutdown gracioso em Spring Boot: zerando o tráfego antes de matar o processo"
+description: "Como configurar Spring Boot para drenar requisições em andamento antes de um SIGTERM, evitando erros 502 durante deploys."
+date: "2026-03-15"
+dateFormatted:
+  pt: "15 mar 2026"
+  en: "Mar 15, 2026"
+tags: ["Spring Boot", "Kubernetes", "DevOps"]
+category: backend
+language: pt
+slug: spring-graceful
+translationKey: spring-graceful
+readingTime: 8
+---
+
+## O Problema dos 502 no Deploy
+
+Toda vez que fazíamos um deploy em Kubernetes, o Datadog mostrava um spike de erros 502 por cerca de 30 segundos. O motivo: o Kubernetes enviava tráfego para um pod que já estava recebendo o SIGTERM para ser encerrado.
+
+O fluxo problemático era:
+1. Kubernetes decide remover o pod (novo deploy ou escala para baixo)
+2. Envia SIGTERM ao processo
+3. Spring Boot começa o shutdown **imediatamente**
+4. Load balancer ainda tem o pod como healthy por alguns segundos
+5. Novas requisições chegam em um servidor que está em processo de encerramento
+6. 502 Bad Gateway
+
+## A Solução em Três Camadas
+
+### Camada 1: Graceful Shutdown no Spring Boot
+
+Desde o Spring Boot 2.3, o graceful shutdown está disponível como configuração:
+
+```yaml
+# application.yml
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+```
+
+Com isso, ao receber SIGTERM, o Spring Boot:
+1. Para de aceitar **novas** requisições
+2. Aguarda as requisições em andamento completarem
+3. Encerra o processo após timeout ou quando todas terminarem
+
+### Camada 2: PreStop Hook no Kubernetes
+
+O problema é que o Kubernetes envia tráfego até receber uma resposta negativa do health check. Para criar uma janela entre o SIGTERM e o roteamento parar, adicionamos um `preStop` hook:
+
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 5"]
+```
+
+Esse `sleep 5` dá tempo para o Kubernetes propagar a remoção do endpoint do Service, antes que o SIGTERM chegue ao processo Java.
+
+### Camada 3: Endpoint de Readiness Customizado
+
+Para controle mais fino, criamos um endpoint `/actuator/health/readiness` customizado que podemos manipular programaticamente:
+
+```java
+@Component
+public class GracefulShutdownHealthIndicator implements HealthIndicator {
+
+    private final AtomicBoolean accepting = new AtomicBoolean(true);
+
+    @EventListener
+    public void onContextClosing(ContextClosedEvent event) {
+        accepting.set(false);
+        log.info("Marked as not ready — draining in-flight requests");
+    }
+
+    @Override
+    public Health health() {
+        return accepting.get()
+            ? Health.up().build()
+            : Health.down().withDetail("reason", "shutting down").build();
+    }
+}
+```
+
+## Configuração Completa do Kubernetes
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: api
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+```
+
+## Resultado
+
+Após implementar as três camadas:
+
+- **Erros 502 durante deploy**: de ~15 por deploy para **zero**
+- **Tempo de indisponibilidade**: de 30s para **< 1s** (somente rolling update)
+- **SLA de deploy**: mantido acima de 99.95% mensalmente
+
+O `terminationGracePeriodSeconds: 60` é o teto — se as requisições não terminarem em 60 segundos, o Kubernetes força o kill com SIGKILL. Para APIs com timeout de 30s, essa margem é suficiente.
+
+## Armadilhas Comuns
+
+**Não confunda liveness com readiness.** O liveness probe reinicia o pod se falhar. O readiness apenas remove o pod do roteamento. Durante o shutdown, só o readiness deve ser marcado como `down`.
+
+**Websockets e streaming precisam de atenção especial.** Conexões longas não são drenadas automaticamente — você precisa de lógica customizada para fechar essas conexões graciosamente.
+
+**Clientes com retry agressivo** podem mascarar o problema sem realmente resolvê-lo. Implemente o graceful shutdown no servidor mesmo que os clientes façam retry.

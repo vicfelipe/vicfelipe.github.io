@@ -2,6 +2,45 @@
   command = "npm run build"
   publish = "dist"
 
+# Serve PT content at root paths (browser URL stays clean, no /pt/ prefix)
+[[redirects]]
+  from = "/"
+  to = "/pt/"
+  status = 200
+
+[[redirects]]
+  from = "/about"
+  to = "/pt/about/"
+  status = 200
+
+[[redirects]]
+  from = "/categories"
+  to = "/pt/categories/"
+  status = 200
+
+[[redirects]]
+  from = "/categories/:id"
+  to = "/pt/categories/:id"
+  status = 200
+
+[[redirects]]
+  from = "/posts/:slug"
+  to = "/pt/posts/:slug"
+  status = 200
+
+[[redirects]]
+  from = "/rss.xml"
+  to = "/pt/rss.xml"
+  status = 200
+
+# Canonical redirect: /pt/* → /* (avoids duplicate content)
+[[redirects]]
+  from = "/pt/*"
+  to = "/:splat"
+  status = 301
+  force = false
+
+# 404 fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"

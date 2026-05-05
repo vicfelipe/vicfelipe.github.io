@@ -1,0 +1,116 @@
+---
+title: "Draining Kafka queues without losing order: per-key idempotency"
+description: "How we built a Kafka consumer that survives redeploys, retries and replays without double-charging on the financial edge."
+date: "2026-04-12"
+dateFormatted:
+  pt: "12 abr 2026"
+  en: "Apr 12, 2026"
+tags: ["Kafka", "Java", "Idempotency"]
+category: platform
+language: en
+slug: kafka-idempotency
+translationKey: kafka-idempotency
+readingTime: 9
+---
+
+## The Problem
+
+In distributed financial systems, message duplication is not a hypothetical bug — it's a mathematical certainty. Redeploys, network failures, partition rebalancing: each of these events can cause reprocessing of already-consumed messages. In payment transactions, this means charging the customer twice.
+
+The challenge we faced at americanas s.a. was clear: a Kafka consumer processing financial transactions needed to be resilient enough to survive any failure without producing duplicate side effects.
+
+## The Naive Approach and Its Problems
+
+The first attempt was using manual offset commits: only committing the offset after successful processing. This works until you realize:
+
+1. If the service crashes between processing and commit, the message is reprocessed
+2. If the database times out during write but processing already happened, you don't know whether to commit
+3. With at-least-once delivery, duplicates are guaranteed by design
+
+The problem isn't Kafka — it's the lack of idempotency at the business layer.
+
+## The Solution: Idempotency Key in the Database
+
+The robust solution involves a control table in the database. Each message gets a unique key derived from `topic + partition + offset`, and before any processing, we check whether this key already exists.
+
+```java
+@Service
+public class PaymentConsumer {
+
+    private final PaymentRepository paymentRepo;
+    private final IdempotencyKeyRepository idempotencyRepo;
+
+    @KafkaListener(topics = "payments", groupId = "payment-processor")
+    @Transactional
+    public void consume(ConsumerRecord<String, PaymentEvent> record) {
+        String idempotencyKey = buildKey(record);
+
+        if (idempotencyRepo.existsByKey(idempotencyKey)) {
+            log.info("Skipping duplicate message: {}", idempotencyKey);
+            return;
+        }
+
+        PaymentEvent event = record.value();
+        processPayment(event);
+
+        idempotencyRepo.save(new IdempotencyKey(idempotencyKey, Instant.now()));
+    }
+
+    private String buildKey(ConsumerRecord<?, ?> record) {
+        return String.format("%s-%d-%d",
+            record.topic(),
+            record.partition(),
+            record.offset()
+        );
+    }
+}
+```
+
+## Guaranteeing Atomicity
+
+The critical part is that both the processing and the idempotency key write must occur within the **same database transaction**. If the database confirms the payment but fails to write the key, the next attempt would duplicate the payment.
+
+```sql
+-- Control table
+CREATE TABLE idempotency_keys (
+    key VARCHAR(200) PRIMARY KEY,
+    processed_at TIMESTAMP NOT NULL,
+    ttl_expires_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_ttl ON idempotency_keys(ttl_expires_at);
+```
+
+The `ttl_expires_at` is important: old records don't need to be kept forever. A cleanup job removes entries older than 30 days, preventing indefinite table growth.
+
+## Offset Management
+
+With idempotency guaranteed at the business layer, we can use `auto-commit` for offsets without fear. Kafka can reprocess messages as many times as it wants — the database will silently ignore duplicates.
+
+```yaml
+spring:
+  kafka:
+    consumer:
+      enable-auto-commit: true
+      auto-commit-interval: 5000
+      auto-offset-reset: earliest
+```
+
+## Production Results
+
+After 6 months in production with a peak of 50k transactions/day:
+
+- **Zero duplicates** recorded in audit logs
+- **P99 latency**: 48ms (processing + idempotency check)
+- **Skip rate**: 0.003% of messages are ignored duplicates
+- The `idempotency_keys` table stays around 200k records in steady state
+
+## Lessons Learned
+
+Idempotency is not an implementation detail — it's a property of the system's contract. When designing Kafka consumers for financial systems, consider:
+
+1. **The idempotency key must be derived from immutable data** (topic + partition + offset is perfect)
+2. **Atomic transaction** between processing and key write is non-negotiable
+3. **TTL on the control table** prevents indefinite growth
+4. **Audit logs** for tracking skipped messages are essential for debugging
+5. **Chaos testing**: deliberately inject duplicates in staging to validate behavior

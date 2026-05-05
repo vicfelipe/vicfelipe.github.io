@@ -13,7 +13,7 @@ export const strings = {
     hero_tagline:
       'Construindo sistemas de back-end resilientes, pipelines de dados e camadas de banco que aguentam o tráfego do mundo real.',
     hero_meta_role: 'Senior Software Developer',
-    hero_meta_focus: 'Java · PL/SQL · JS/TypeScript · Observabilidade',
+    hero_meta_focus: 'Java · PL/SQL · JS/TS · CI/CD · Observabilidade',
     hero_cta_read: 'Ler últimos artigos',
     hero_cta_about: 'Conhecer meu trabalho',
     hero_status: 'Disponível para conversas',
@@ -74,7 +74,7 @@ export const strings = {
     hero_tagline:
       'Building resilient backend systems, data pipelines and database layers that hold up under real-world traffic.',
     hero_meta_role: 'Senior Software Developer',
-    hero_meta_focus: 'Java · PL/SQL · JS/TypeScript · Observability',
+    hero_meta_focus: 'Java · PL/SQL · JS/TS · CI/CD · Observability',
     hero_cta_read: 'Read latest posts',
     hero_cta_about: 'See my work',
     hero_status: 'Open to conversations',
@@ -105,7 +105,7 @@ export const strings = {
 
     about_title: 'About',
     about_lede:
-      "I'm Victor Alencastro, a full-stack developer focused on backend, Oracle databases and distributed platforms. I've spent 12+ years in IT, 8+ of them shipping software — from a help-desk seat in Hortolândia, through agency work on Honda and Toyota Brazil's SharePoint portals, to leading e-commerce platforms at scale.",
+      "I'm Victor Alencastro, a full-stack developer focused on backend, Oracle databases and distributed platforms. I've spent 12+ years in IT, 8+ of them shipping software.",
     about_now_label: 'NOW',
     about_now_text: 'Senior Software Developer working with Java, Go and Kafka at e-commerce scale.',
     about_loc: 'Hortolândia, São Paulo · Brazil',

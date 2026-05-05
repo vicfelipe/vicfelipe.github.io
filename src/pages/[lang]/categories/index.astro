@@ -5,7 +5,7 @@ import ArticleRow from '@/components/ArticleRow.astro';
 import { getCollection } from 'astro:content';
 import { useTranslations, type Lang } from '@/i18n/strings';
 import { CATEGORIES } from '@/lib/categories';
-import { entrySlug } from '@/lib/utils';
+import { entrySlug, localePath } from '@/lib/utils';
 
 export function getStaticPaths() {
   return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
@@ -38,7 +38,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
     </header>
 
     <div class="filter-row">
-      <a href={`/${lang}/categories`} class="category-pill category-pill--active">
+      <a href={localePath(lang, '/categories')} class="category-pill category-pill--active">
         All ({articles.length})
       </a>
       {

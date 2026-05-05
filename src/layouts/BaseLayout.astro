@@ -2,6 +2,7 @@
 import '@/styles/global.css';
 import Navbar from '@/components/Navbar.astro';
 import Footer from '@/components/Footer.astro';
+import { localePath } from '@/lib/utils';
 
 interface Props {
   title: string;
@@ -28,8 +29,10 @@ const {
 const siteUrl = 'https://victorcode.dev';
 const canonical = canonicalUrl ?? new URL(Astro.url.pathname, siteUrl).href;
 const ogImageUrl = ogImage ?? `${siteUrl}/og-default.png`;
-const ptUrl = canonical.replace(/^\/(en)\//, '/pt/');
-const enUrl = canonical.replace(/^\/(pt)\//, '/en/');
+const canonicalPath = new URL(canonical).pathname;
+const strippedPath = canonicalPath.replace(/^\/(pt|en)/, '') || '/';
+const ptUrl = new URL(strippedPath, siteUrl).href;
+const enUrl = new URL(`/en${strippedPath}`, siteUrl).href;
 ---
 
 <!doctype html>
@@ -71,7 +74,7 @@ const enUrl = canonical.replace(/^\/(pt)\//, '/en/');
       rel="alternate"
       type="application/rss+xml"
       title="Victor Alencastro"
-      href={`/${lang}/rss.xml`}
+      href={localePath(lang, '/rss.xml')}
     />
 
     <!-- Fonts -->

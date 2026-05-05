@@ -1,0 +1,167 @@
+---
+title: "Cortando 60% do custo do Datadog sem sacrificar visibilidade"
+description: "Como auditamos nosso uso do Datadog e implementamos uma estratégia de sampling inteligente que reduziu a fatura mensal de R$48k para R$19k."
+date: "2026-01-30"
+dateFormatted:
+  pt: "30 jan 2026"
+  en: "Jan 30, 2026"
+tags: ["Datadog", "Observabilidade", "Custos"]
+category: observability
+language: pt
+slug: datadog-budget
+translationKey: datadog-budget
+readingTime: 12
+---
+
+## O Choque da Fatura
+
+No final do Q3, a fatura do Datadog veio com um aumento de 40% em relação ao trimestre anterior. R$48.000/mês para uma equipe de 12 engenheiros. A direção pediu redução de 30% — entregamos 60%.
+
+Este artigo documenta a metodologia que usamos para auditar, priorizar e reduzir o consumo sem abrir mão da visibilidade em produção.
+
+## Entendendo a Fatura
+
+O Datadog cobra por múltiplas dimensões:
+- **Hosts**: por agente instalado (fixo)
+- **Custom metrics**: por série temporal única (o mais perigoso)
+- **Log ingestion**: por GB ingerido
+- **APM traces**: por span amostrado
+- **RUM sessions**: por sessão de usuário real
+
+Nossa decomposição revelou:
+
+| Produto | Custo mensal | % do total |
+|---|---|---|
+| Custom metrics | R$ 22.400 | 46.7% |
+| Log ingestion | R$ 14.200 | 29.6% |
+| APM traces | R$ 8.100 | 16.9% |
+| Hosts | R$ 3.300 | 6.9% |
+
+## Atacando as Custom Metrics
+
+46.7% do custo vinha de custom metrics. A auditoria revelou o problema: métricas com **alta cardinalidade** em tags.
+
+```python
+# PROBLEMA: tag com valor único por request
+statsd.increment('api.request',
+    tags=[
+        'endpoint:/api/v1/orders',
+        'user_id:12345678',     # alta cardinalidade!
+        'request_id:abc-123',   # alta cardinalidade!
+        'status:200'
+    ])
+```
+
+Cada combinação única de tags gera uma série temporal separada. Com `user_id` e `request_id` como tags, estávamos gerando milhões de séries únicas.
+
+A correção foi remover tags de alta cardinalidade e mover esses dados para logs ou traces:
+
+```python
+# CORRETO: apenas tags de baixa cardinalidade
+statsd.increment('api.request',
+    tags=[
+        'endpoint:/api/v1/orders',
+        'status:200',
+        'region:sa-east-1',
+        'service:order-api'
+    ])
+```
+
+**Redução**: de 2.4M custom metrics para 180k. Economia: **R$ 18.000/mês**.
+
+## Otimizando Logs
+
+O segundo maior custo era a ingestão de logs. Estávamos logando em `DEBUG` em produção (legacy do time anterior) e enviando todos os logs de health check.
+
+### Filtragem no Agent
+
+O Datadog Agent suporta processamento antes da ingestão:
+
+```yaml
+# datadog.yaml
+logs_config:
+  processing_rules:
+    - type: exclude_at_match
+      name: exclude_health_checks
+      pattern: "GET /health HTTP"
+
+    - type: exclude_at_match
+      name: exclude_debug_logs
+      pattern: '"level":"debug"'
+```
+
+### Sampling de Logs de Alta Frequência
+
+Para endpoints de alta frequência, implementamos sampling no nível da aplicação:
+
+```java
+@Slf4j
+@Aspect
+@Component
+public class LogSamplingAspect {
+
+    private final AtomicLong counter = new AtomicLong(0);
+    private static final long SAMPLE_RATE = 100; // 1%
+
+    @Around("@annotation(SampledLog)")
+    public Object sampleLog(ProceedingJoinPoint pjp) throws Throwable {
+        Object result = pjp.proceed();
+
+        if (counter.incrementAndGet() % SAMPLE_RATE == 0) {
+            log.info("Sampled request: {}", result);
+        }
+
+        return result;
+    }
+}
+```
+
+**Redução**: de 2.8 TB/mês para 890 GB/mês. Economia: **R$ 9.500/mês**.
+
+## APM Trace Sampling
+
+Por padrão, o Datadog APM coleta 100% dos traces. Para serviços de alto volume, isso é desnecessário e caro.
+
+Implementamos **Head-based sampling** com regras por serviço:
+
+```yaml
+# Em datadog.yaml
+apm_config:
+  enabled: true
+  analyzed_spans:
+    order-api|web.request: 1  # 100% para o serviço crítico
+    inventory-sync|grpc.request: 0.1  # 10% para serviço de alto volume
+    health-checker|http.request: 0.01  # 1% para health checks
+```
+
+Para erros, sempre amostrar 100%:
+
+```java
+@KafkaListener(topics = "orders")
+public void processOrder(OrderEvent event) {
+    try {
+        // processamento
+    } catch (Exception e) {
+        // Força sampling de 100% para traces com erro
+        Span span = GlobalTracer.get().activeSpan();
+        if (span != null) {
+            span.setTag("sampling.priority", 2); // always sample
+        }
+        throw e;
+    }
+}
+```
+
+**Redução**: de 45M spans/mês para 12M spans/mês. Economia: **R$ 5.200/mês**.
+
+## Resultado Final
+
+| Produto | Antes | Depois | Economia |
+|---|---|---|---|
+| Custom metrics | R$ 22.400 | R$ 3.800 | R$ 18.600 |
+| Log ingestion | R$ 14.200 | R$ 4.700 | R$ 9.500 |
+| APM traces | R$ 8.100 | R$ 2.900 | R$ 5.200 |
+| Hosts | R$ 3.300 | R$ 3.300 | — |
+| **Total** | **R$ 48.000** | **R$ 14.700** | **R$ 33.300 (69%)** |
+
+A chave foi atacar a raiz do problema (métricas de alta cardinalidade) em vez de apenas limitar o que enviamos. Visibilidade em produção foi mantida — aliás, melhorou, porque os dashboards pararam de ser sobrecarregados com ruído de métricas inúteis.

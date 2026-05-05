@@ -5,7 +5,7 @@ import CategoryPill from '@/components/CategoryPill.astro';
 import { useTranslations, type Lang } from '@/i18n/strings';
 import { getCollection } from 'astro:content';
 import { CATEGORIES } from '@/lib/categories';
-import { entrySlug } from '@/lib/utils';
+import { entrySlug, localePath } from '@/lib/utils';
 
 export function getStaticPaths() {
   return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
@@ -43,7 +43,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
         <p class="hero-tag">{t('hero_tagline')}</p>
         <div class="hero-cta">
           <a href="#recent" class="btn btn--primary">{t('hero_cta_read')}</a>
-          <a href={`/${lang}/about`} class="btn btn--ghost">{t('hero_cta_about')}</a>
+          <a href={localePath(lang, '/about')} class="btn btn--ghost">{t('hero_cta_about')}</a>
         </div>
       </div>
 
@@ -119,7 +119,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
           </h2>
           <p class="section-sub">{t('sec_recent_sub')}</p>
         </div>
-        <a href={`/${lang}/categories`} class="link-arrow">{t('sec_all_articles')} →</a>
+        <a href={localePath(lang, '/categories')} class="link-arrow">{t('sec_all_articles')} →</a>
       </div>
 
       {

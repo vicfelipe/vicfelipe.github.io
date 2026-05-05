@@ -1,0 +1,193 @@
+---
+title: "CI/CD em monorepo: como buildamos apenas o que mudou no GitLab"
+description: "Estratégia de detecção de mudanças para reduzir o tempo médio de pipeline de 45 minutos para 8 minutos em um monorepo com 23 serviços."
+date: "2025-10-12"
+dateFormatted:
+  pt: "12 out 2025"
+  en: "Oct 12, 2025"
+tags: ["GitLab CI", "DevOps", "Monorepo"]
+category: platform
+language: pt
+slug: ci-monorepo
+translationKey: ci-monorepo
+readingTime: 9
+---
+
+## O Problema do Monorepo
+
+Quando o número de serviços em nosso monorepo chegou a 23, o tempo médio de pipeline subiu para 45 minutos. O motivo: buildávamos e testávamos **todos** os 23 serviços em cada merge request, independente de qual serviço havia sido alterado.
+
+O custo era duplo: tempo de espera dos desenvolvedores e créditos de CI desperdiçados.
+
+## A Abordagem: Detecção de Mudanças por DAG
+
+A solução foi implementar um sistema de detecção de mudanças que analisa o diff do MR e determina quais serviços precisam ser buildados. Cada serviço tem um arquivo `service.yml` declarando suas dependências.
+
+### Estrutura do Monorepo
+
+```
+├── services/
+│   ├── order-api/
+│   │   ├── service.yml
+│   │   └── src/
+│   ├── payment-api/
+│   │   ├── service.yml
+│   │   └── src/
+│   ├── inventory-service/
+│   │   └── service.yml
+│   └── ...
+├── libs/
+│   ├── commons/       # compartilhado por vários serviços
+│   └── security/
+└── .gitlab-ci.yml
+```
+
+### O Arquivo `service.yml`
+
+```yaml
+# services/order-api/service.yml
+name: order-api
+paths:
+  - services/order-api/
+  - libs/commons/      # se commons mudar, rebuildar order-api
+  - libs/security/
+depends_on:
+  - inventory-service  # testes de integração precisam do inventory
+```
+
+## O Script de Detecção
+
+```python
+#!/usr/bin/env python3
+"""Detecta quais serviços foram afetados por um conjunto de mudanças."""
+
+import yaml
+import subprocess
+import json
+from pathlib import Path
+
+def get_changed_files() -> set[str]:
+    result = subprocess.run(
+        ['git', 'diff', '--name-only', 'origin/main...HEAD'],
+        capture_output=True, text=True
+    )
+    return set(result.stdout.strip().split('\n'))
+
+def load_services() -> dict:
+    services = {}
+    for service_file in Path('services').glob('*/service.yml'):
+        with open(service_file) as f:
+            svc = yaml.safe_load(f)
+            services[svc['name']] = svc
+    return services
+
+def get_affected_services(changed_files: set[str], services: dict) -> set[str]:
+    affected = set()
+
+    for name, svc in services.items():
+        for path in svc.get('paths', []):
+            if any(f.startswith(path) for f in changed_files):
+                affected.add(name)
+                break
+
+    # Transitive dependencies
+    changed = True
+    while changed:
+        changed = False
+        for name, svc in services.items():
+            if name not in affected:
+                for dep in svc.get('depends_on', []):
+                    if dep in affected:
+                        affected.add(name)
+                        changed = True
+
+    return affected
+
+if __name__ == '__main__':
+    changed = get_changed_files()
+    services = load_services()
+    affected = get_affected_services(changed, services)
+
+    # Output para o GitLab CI
+    print(json.dumps({'affected': list(affected)}))
+```
+
+## Integração com GitLab CI
+
+O truque é usar `rules:changes` junto com variáveis dinâmicas geradas em um job anterior:
+
+```yaml
+# .gitlab-ci.yml
+stages:
+  - detect
+  - build
+  - test
+  - deploy
+
+detect-changes:
+  stage: detect
+  script:
+    - python3 scripts/detect-changes.py > affected.json
+    - |
+      # Gerar variáveis para jobs downstream
+      python3 -c "
+      import json
+      data = json.load(open('affected.json'))
+      for svc in data['affected']:
+        print(f'BUILD_{svc.upper().replace(\"-\",\"_\")}=true')
+      " >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+
+build-order-api:
+  stage: build
+  needs: [detect-changes]
+  rules:
+    - if: '$BUILD_ORDER_API == "true"'
+  script:
+    - cd services/order-api
+    - docker build -t order-api:$CI_COMMIT_SHA .
+    - docker push registry.example.com/order-api:$CI_COMMIT_SHA
+
+build-payment-api:
+  stage: build
+  needs: [detect-changes]
+  rules:
+    - if: '$BUILD_PAYMENT_API == "true"'
+  script:
+    - cd services/payment-api
+    - docker build -t payment-api:$CI_COMMIT_SHA .
+```
+
+## Resultado
+
+Após implementar a detecção de mudanças:
+
+| Cenário | Antes | Depois |
+|---|---|---|
+| Mudança em 1 serviço | 45 min | 8 min |
+| Mudança em lib compartilhada | 45 min | 32 min |
+| Mudança em todos os serviços | 45 min | 45 min |
+| **Tempo médio (P50)** | **45 min** | **8 min** |
+
+A lib compartilhada (`commons`) está em 85% dos serviços — quando ela muda, ainda buildamos quase tudo. Mas isso acontece em menos de 5% dos MRs.
+
+## Refinamentos Adicionais
+
+### Cache por Serviço
+
+```yaml
+build-order-api:
+  cache:
+    key: order-api-$CI_COMMIT_REF_SLUG
+    paths:
+      - services/order-api/.gradle/
+      - services/order-api/build/
+```
+
+### Build Matrix Paralelo
+
+Para serviços independentes, o GitLab executa em paralelo automaticamente quando não há `needs` entre eles. Isso reduziu o tempo de wall-clock mesmo quando múltiplos serviços precisam ser buildados.
+
+O monorepo hoje tem 28 serviços e o P50 de pipeline continua em 8-10 minutos.

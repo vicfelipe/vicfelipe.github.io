@@ -1,0 +1,181 @@
+---
+title: "Production Go profiling with pprof: finding memory leaks at runtime"
+description: "How to use pprof to identify and fix a goroutine leak that was consuming 4GB of heap in a high-frequency API."
+date: "2026-02-20"
+dateFormatted:
+  pt: "20 fev 2026"
+  en: "Feb 20, 2026"
+tags: ["Go", "Performance", "pprof"]
+category: backend
+language: en
+slug: go-pprof
+translationKey: go-pprof
+readingTime: 10
+---
+
+## The Symptom
+
+The Datadog alert was the first sign: our Go integration API was consuming 4.2GB of heap after 72 hours of execution. Go's GC was running every few seconds, causing P99 latency above 800ms — unacceptable for a real-time inventory integration service.
+
+Memory was growing linearly since the last deploy. Some object was escaping the garbage collector.
+
+## Enabling pprof Safely
+
+`net/http/pprof` exposes sensitive endpoints. In production, the correct approach is a separate HTTP server, accessible only internally:
+
+```go
+package main
+
+import (
+    "net/http"
+    _ "net/http/pprof"
+    "log"
+)
+
+func startPprofServer() {
+    // Only on the internal interface, never exposed publicly
+    go func() {
+        log.Println(http.ListenAndServe("localhost:6060", nil))
+    }()
+}
+```
+
+With port-forwarding via kubectl:
+```bash
+kubectl port-forward pod/api-xyz-123 6060:6060
+```
+
+## Heap Analysis
+
+The first step was capturing a heap profile:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/heap
+```
+
+In interactive mode, the `top` command immediately revealed the culprit:
+
+```
+Showing nodes accounting for 3.8GB, 92.12% of 4.12GB total
+      flat  flat%   sum%        cum   cum%
+    3.1GB 75.24% 75.24%     3.1GB 75.24%  bytes.makeSlice
+   450MB 10.92% 86.16%    450MB 10.92%  strings.Builder.grow
+```
+
+`bytes.makeSlice` accumulating 3.1GB. The full call path (`web` command in pprof) revealed the source was an XML parsing function.
+
+## The Leak
+
+The problematic code was in an invoice parser that created buffers but never released them:
+
+```go
+// PROBLEM: unbounded cache
+var xmlCache = make(map[string]*bytes.Buffer)
+
+func parseInvoice(invoiceKey string, xmlData []byte) (*Invoice, error) {
+    if cached, ok := xmlCache[invoiceKey]; ok {
+        return decode(cached), nil
+    }
+
+    buf := bytes.NewBuffer(make([]byte, 0, len(xmlData)*2))
+    // ... parsing ...
+
+    xmlCache[invoiceKey] = buf  // never expires!
+    return result, nil
+}
+```
+
+A buffer cache without TTL and without size limit. The API processed ~50k invoices per day — the cache grew indefinitely.
+
+## The Fix
+
+We replaced the plain map with a bounded LRU cache:
+
+```go
+import "github.com/hashicorp/golang-lru/v2"
+
+var xmlCache *lru.Cache[string, *Invoice]
+
+func init() {
+    var err error
+    xmlCache, err = lru.New[string, *Invoice](10_000) // max 10k entries
+    if err != nil {
+        panic(err)
+    }
+}
+
+func parseInvoice(invoiceKey string, xmlData []byte) (*Invoice, error) {
+    if cached, ok := xmlCache.Get(invoiceKey); ok {
+        return cached, nil
+    }
+
+    result, err := doParse(xmlData)
+    if err != nil {
+        return nil, err
+    }
+
+    xmlCache.Add(invoiceKey, result) // automatic LRU eviction
+    return result, nil
+}
+```
+
+## Goroutine Analysis
+
+While investigating, I found a second problem: accumulated goroutines:
+
+```bash
+curl http://localhost:6060/debug/pprof/goroutine?debug=2
+```
+
+There were 12,847 goroutines in `select` waiting on a channel that never received data — a classic goroutine leak caused by uncanceled contexts:
+
+```go
+// PROBLEM: goroutine leaks if ctx is cancelled before result
+func fetchWithRetry(ctx context.Context, url string) <-chan Result {
+    resultCh := make(chan Result)
+    go func() {
+        for i := 0; i < 3; i++ {
+            resp, err := http.Get(url)
+            resultCh <- Result{resp, err} // blocks if nobody reads
+        }
+    }()
+    return resultCh
+}
+```
+
+The fix was using `select` with ctx to prevent blocking:
+
+```go
+func fetchWithRetry(ctx context.Context, url string) <-chan Result {
+    resultCh := make(chan Result, 1) // buffered!
+    go func() {
+        defer close(resultCh)
+        for i := 0; i < 3; i++ {
+            select {
+            case <-ctx.Done():
+                return
+            default:
+            }
+            resp, err := http.Get(url)
+            select {
+            case resultCh <- Result{resp, err}:
+                return
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return resultCh
+}
+```
+
+## Final Result
+
+After both fixes:
+
+- **Heap**: stabilized at ~180MB (was 4.2GB after 72h)
+- **Goroutines**: max ~200 (were >12k)
+- **P99 latency**: dropped from 800ms to 45ms
+- **GC frequency**: from 1/3s to 1/120s
+
+Production pprof, when used carefully, is an indispensable tool. The key is exposing it only internally and incorporating it into the incident investigation process from the start.
