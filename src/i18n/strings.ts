@@ -55,7 +55,7 @@ export const strings = {
     about_education: 'Educação',
     about_contact: 'Contato',
     about_contact_sub:
-      'Aberto a conversas sobre arquitetura backend, performance Oracle e plataformas baseadas em eventos.',
+      'Procurando por ajuda especializada para o seu projeto? Entre em contato.',
 
     footer_tag: 'Sou desenvolvedor de software com experiência sólida em sistemas distribuídos. Amante por discussão para resolver problemas complexos. Codando na prática entre deploys, incidentes e boas decisões.',
     footer_built: 'Feito de ❤️ no interior de São Paulo.',
