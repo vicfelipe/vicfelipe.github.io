@@ -46,7 +46,7 @@ export const strings = {
     about_lede:
       'Sou Victor Alencastro, desenvolvedor full-stack focado em backend, banco de dados Oracle e plataformas distribuídas. Atuo há mais de 12 anos em TI, dos quais 8+ como desenvolvedor. Linguagem é apenas uma ferramenta, o que importa é uma solução eficiente e escalável.',
     about_now_label: 'AGORA',
-    about_now_text: 'Senior Software Developer trabalhando com Java, Go e Kafka em escala de e-commerce.',
+    about_now_text: 'Trabalhando com Java Spring Boot e desenvolvendo projetos pessoais, estou livre no mercado e disponível para novos desafios.',
     about_loc: 'Hortolândia, São Paulo · Brasil',
     about_email: 'vicfelipe@live.com',
     about_timeline: 'Linha do tempo',
