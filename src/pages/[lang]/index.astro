@@ -122,6 +122,23 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
         <a href={localePath(lang, '/categories')} class="link-arrow">{t('sec_all_articles')} →</a>
       </div>
 
+      <div class="filter-row">
+        <a href={localePath(lang, '/categories')} class="category-pill category-pill--active">
+          All ({articles.length})
+        </a>
+        {
+          CATEGORIES.map((cat) => (
+            <CategoryPill
+              variant="pill"
+              id={cat.id}
+              label={`${cat[lang]} (${counts[cat.id] ?? 0})`}
+              count={counts[cat.id] ?? 0}
+              lang={lang}
+            />
+          ))
+        }
+      </div>
+
       {
         featured && (
           <ArticleCard
@@ -160,30 +177,44 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
     </div>
   </section>
 
-  <!-- CATEGORIAS -->
+  <!-- CONTATO -->
   <section class="section section--alt">
     <div class="section-inner">
       <div class="section-head">
         <div>
           <h2 class="section-title">
             <span class="section-num">02</span>
-            {t('sec_categories')}
+            {t('about_contact')}
           </h2>
-          <p class="section-sub">{t('sec_categories_sub')}</p>
+          <p class="section-sub">{t('about_contact_sub')}</p>
         </div>
       </div>
-      <div class="categories-grid">
-        {
-          CATEGORIES.map((cat) => (
-            <CategoryPill
-              variant="card"
-              id={cat.id}
-              label={cat[lang]}
-              count={counts[cat.id] ?? 0}
-              lang={lang}
-            />
-          ))
-        }
+      <div class="contact-grid">
+        <a href="mailto:vicfelipe@live.com" class="contact-card">
+          <span class="contact-card__key">Email</span>
+          <span class="contact-card__val">vicfelipe@live.com</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
+        <a
+          href="https://www.linkedin.com/in/victor-alencastro"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="contact-card"
+        >
+          <span class="contact-card__key">LinkedIn</span>
+          <span class="contact-card__val">victor-alencastro</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
+        <a
+          href="https://github.com/vicfelipe"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="contact-card"
+        >
+          <span class="contact-card__key">GitHub</span>
+          <span class="contact-card__val">vicfelipe</span>
+          <span class="contact-card__arrow" aria-hidden="true">→</span>
+        </a>
       </div>
     </div>
   </section>
@@ -499,10 +530,57 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
     margin-top: 0;
   }
 
-  .categories-grid {
+  .contact-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    gap: 12px;
+  }
+
+  .contact-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px 20px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .contact-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .contact-card__key {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .contact-card__val {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+
+  .contact-card__arrow {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    color: var(--ink-4);
+    font-size: 14px;
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .contact-card:hover .contact-card__arrow {
+    color: var(--accent);
+    transform: translate(2px, -2px);
   }
 
   @media (max-width: 1024px) {
@@ -514,7 +592,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
       display: none;
     }
 
-    .categories-grid {
+    .contact-grid {
       grid-template-columns: repeat(2, 1fr);
     }
 
@@ -533,7 +611,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
       grid-template-columns: 1fr;
     }
 
-    .categories-grid {
+    .contact-grid {
       grid-template-columns: 1fr;
     }
 
