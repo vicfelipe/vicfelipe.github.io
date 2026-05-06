@@ -6,6 +6,7 @@ var PostPreview = createClass({
     var category = entry.getIn(['data', 'category']) || '';
     var date = entry.getIn(['data', 'date']) || '';
     var coverImage = entry.getIn(['data', 'coverImage']);
+    var coverSrc = coverImage ? this.props.getAsset(coverImage) : null;
     var draft = entry.getIn(['data', 'draft']);
     var body = this.props.widgetFor('body');
 
@@ -21,8 +22,8 @@ var PostPreview = createClass({
         h('p', { className: 'article-lede' }, description),
         h('div', { className: 'article-meta' }, h('span', {}, date))
       ),
-      coverImage
-        ? h('img', { className: 'cover-img', src: coverImage, alt: '' })
+      coverSrc
+        ? h('img', { className: 'cover-img', src: String(coverSrc), alt: '' })
         : null,
       h('div', { className: 'article-body' }, body)
     );
