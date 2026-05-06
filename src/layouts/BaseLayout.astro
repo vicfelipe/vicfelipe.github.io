@@ -88,6 +88,20 @@ const enUrl = new URL(`/en${strippedPath}`, siteUrl).href;
     <!-- Schema.org for articles -->
     {schemaOrg && <script type="application/ld+json" set:html={schemaOrg} />}
 
+    <!-- Netlify Identity: handles recovery/invite tokens that land on the main site -->
+    <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+    <script is:inline>
+      if (window.netlifyIdentity) {
+        window.netlifyIdentity.on('init', function (user) {
+          if (!user) {
+            window.netlifyIdentity.on('login', function () {
+              document.location.href = '/admin/';
+            });
+          }
+        });
+      }
+    </script>
+
     <!-- Theme & density: inline to avoid flash -->
     <script is:inline>
       (function () {
