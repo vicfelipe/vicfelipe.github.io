@@ -10,6 +10,7 @@ const articleSchema = z.object({
   translationKey: z.string(),
   draft: z.boolean().default(false),
   readingTime: z.number().optional(),
+  coverImage: z.string().optional(),
 });
 
 export const collections = {

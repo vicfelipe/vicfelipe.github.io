@@ -14,9 +14,11 @@ interface Props {
   title: string;
   /** compact=true renders a shorter banner (used inside article cards) */
   compact?: boolean;
+  /** Optional uploaded cover image — overrides the generated SVG */
+  src?: string;
 }
 
-const { category, slug, title, compact = false } = Astro.props;
+const { category, slug, title, compact = false, src } = Astro.props;
 const hue = CATEGORY_HUES[category] ?? 144;
 
 const seed = [...(slug + title)].reduce((acc, c, i) => acc + c.charCodeAt(0) * (i + 1), 0);
@@ -46,6 +48,11 @@ const bgMid = `oklch(20% 0.06 ${hue})`;
 const gradId = `cg-${(slug + (compact ? '-c' : '')).replace(/[^a-z0-9]/g, '')}`;
 ---
 
+{src ? (
+  <div class:list={['article-cover', { 'article-cover--compact': compact }]}>
+    <img class="cover-img" src={src} alt="" />
+  </div>
+) : (
 <div class:list={['article-cover', { 'article-cover--compact': compact }]} aria-hidden="true">
   <svg
     class="cover-svg"
@@ -87,6 +94,7 @@ const gradId = `cg-${(slug + (compact ? '-c' : '')).replace(/[^a-z0-9]/g, '')}`;
     )}
   </svg>
 </div>
+)}
 
 <style>
   .article-cover {
@@ -107,5 +115,12 @@ const gradId = `cg-${(slug + (compact ? '-c' : '')).replace(/[^a-z0-9]/g, '')}`;
     display: block;
     width: 100%;
     height: auto;
+  }
+
+  .cover-img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 5 / 2;
+    object-fit: cover;
   }
 </style>

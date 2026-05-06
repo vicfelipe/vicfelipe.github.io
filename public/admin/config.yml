@@ -55,6 +55,11 @@ collections:
         value_type: int
         min: 1
         max: 60
+      - label: "Imagem de Capa"
+        name: coverImage
+        widget: image
+        required: false
+        hint: "Opcional — se não preenchida, o cover é gerado automaticamente pela categoria"
       - { label: "Rascunho", name: draft, widget: boolean, default: false }
       - { label: "Idioma", name: language, widget: hidden, default: "pt" }
       - { label: "Conteúdo", name: body, widget: markdown }
@@ -101,6 +106,11 @@ collections:
         value_type: int
         min: 1
         max: 60
+      - label: "Cover Image"
+        name: coverImage
+        widget: image
+        required: false
+        hint: "Optional — if empty, the cover is auto-generated from the category"
       - { label: "Draft", name: draft, widget: boolean, default: false }
       - { label: "Language", name: language, widget: hidden, default: "en" }
       - { label: "Content", name: body, widget: markdown }
