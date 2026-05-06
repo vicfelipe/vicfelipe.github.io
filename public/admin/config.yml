@@ -1,0 +1,104 @@
+backend:
+  name: git-gateway
+  branch: main
+
+# Uncomment the line below for local development (run `npm run cms` in a separate terminal)
+# local_backend: true
+
+media_folder: public/images/posts
+public_folder: /images/posts
+
+locale: pt
+
+collections:
+  - name: pt-articles
+    label: "Artigos (PT)"
+    label_singular: "Artigo PT"
+    folder: src/content/pt-articles
+    create: true
+    delete: true
+    slug: "{{slug}}"
+    extension: mdx
+    format: frontmatter
+    fields:
+      - { label: "Título", name: title, widget: string }
+      - { label: "Descrição", name: description, widget: text }
+      - label: "Data"
+        name: date
+        widget: datetime
+        format: "YYYY-MM-DD"
+        date_format: "DD/MM/YYYY"
+        time_format: false
+        picker_utc: true
+      - label: "Categoria"
+        name: category
+        widget: select
+        options:
+          - { label: "Platform", value: platform }
+          - { label: "Backend", value: backend }
+          - { label: "Databases", value: databases }
+          - { label: "Observability", value: observability }
+          - { label: "Data", value: data }
+          - { label: "Career", value: career }
+          - { label: "AI", value: ai }
+      - { label: "Tags", name: tags, widget: list }
+      - label: "Translation Key"
+        name: translationKey
+        widget: string
+        hint: "Slug igual ao usado na versão EN (ex: kafka-idempotency)"
+      - label: "Tempo de leitura (min)"
+        name: readingTime
+        widget: number
+        required: false
+        value_type: int
+        min: 1
+        max: 60
+      - { label: "Rascunho", name: draft, widget: boolean, default: false }
+      - { label: "Idioma", name: language, widget: hidden, default: "pt" }
+      - { label: "Conteúdo", name: body, widget: markdown }
+
+  - name: en-articles
+    label: "Articles (EN)"
+    label_singular: "Article EN"
+    folder: src/content/en-articles
+    create: true
+    delete: true
+    slug: "{{slug}}"
+    extension: mdx
+    format: frontmatter
+    fields:
+      - { label: "Title", name: title, widget: string }
+      - { label: "Description", name: description, widget: text }
+      - label: "Date"
+        name: date
+        widget: datetime
+        format: "YYYY-MM-DD"
+        date_format: "MM/DD/YYYY"
+        time_format: false
+        picker_utc: true
+      - label: "Category"
+        name: category
+        widget: select
+        options:
+          - { label: "Platform", value: platform }
+          - { label: "Backend", value: backend }
+          - { label: "Databases", value: databases }
+          - { label: "Observability", value: observability }
+          - { label: "Data", value: data }
+          - { label: "Career", value: career }
+          - { label: "AI", value: ai }
+      - { label: "Tags", name: tags, widget: list }
+      - label: "Translation Key"
+        name: translationKey
+        widget: string
+        hint: "Same slug used in the PT version (e.g. kafka-idempotency)"
+      - label: "Reading Time (min)"
+        name: readingTime
+        widget: number
+        required: false
+        value_type: int
+        min: 1
+        max: 60
+      - { label: "Draft", name: draft, widget: boolean, default: false }
+      - { label: "Language", name: language, widget: hidden, default: "en" }
+      - { label: "Content", name: body, widget: markdown }

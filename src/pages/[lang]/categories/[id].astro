@@ -5,7 +5,7 @@ import ArticleRow from '@/components/ArticleRow.astro';
 import { getCollection } from 'astro:content';
 import { useTranslations, type Lang } from '@/i18n/strings';
 import { CATEGORIES } from '@/lib/categories';
-import { entrySlug } from '@/lib/utils';
+import { entrySlug, formatDate } from '@/lib/utils';
 
 export async function getStaticPaths() {
   const langs: Lang[] = ['pt', 'en'];
@@ -69,7 +69,7 @@ const counts = allArticles.reduce<Record<string, number>>((acc, a) => {
               description={article.data.description}
               slug={entrySlug(article.id)}
               lang={lang}
-              date={article.data.dateFormatted[lang]}
+              date={formatDate(article.data.date, lang)}
               readingTime={article.data.readingTime ?? 8}
               tags={article.data.tags}
               category={article.data.category}

@@ -5,7 +5,7 @@ import CategoryPill from '@/components/CategoryPill.astro';
 import { useTranslations, type Lang } from '@/i18n/strings';
 import { getCollection } from 'astro:content';
 import { CATEGORIES } from '@/lib/categories';
-import { entrySlug, localePath } from '@/lib/utils';
+import { entrySlug, localePath, formatDate } from '@/lib/utils';
 
 export function getStaticPaths() {
   return [{ params: { lang: 'pt' } }, { params: { lang: 'en' } }];
@@ -147,7 +147,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
             description={featured.data.description}
             slug={entrySlug(featured.id)}
             lang={lang}
-            date={featured.data.dateFormatted[lang]}
+            date={formatDate(featured.data.date, lang)}
             readingTime={featured.data.readingTime ?? 8}
             tags={featured.data.tags}
             category={featured.data.category}
@@ -165,7 +165,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
               description={article.data.description}
               slug={entrySlug(article.id)}
               lang={lang}
-              date={article.data.dateFormatted[lang]}
+              date={formatDate(article.data.date, lang)}
               readingTime={article.data.readingTime ?? 8}
               tags={article.data.tags}
               category={article.data.category}

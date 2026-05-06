@@ -4,10 +4,6 @@ const articleSchema = z.object({
   title: z.string(),
   description: z.string(),
   date: z.string(),
-  dateFormatted: z.object({
-    pt: z.string(),
-    en: z.string(),
-  }),
   tags: z.array(z.string()),
   category: z.enum(['platform', 'backend', 'databases', 'observability', 'data', 'career', 'ai']),
   language: z.enum(['pt', 'en']),

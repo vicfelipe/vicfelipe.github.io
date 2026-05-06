@@ -1,5 +1,16 @@
 import type { CollectionEntry } from 'astro:content';
 
+const PT_MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatDate(dateStr: string, lang: 'pt' | 'en'): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const m = month - 1;
+  return lang === 'pt'
+    ? `${day} ${PT_MONTHS[m]} ${year}`
+    : `${EN_MONTHS[m]} ${day}, ${year}`;
+}
+
 export function localePath(lang: 'pt' | 'en', path: string): string {
   return lang === 'pt' ? path : `/${lang}${path}`;
 }

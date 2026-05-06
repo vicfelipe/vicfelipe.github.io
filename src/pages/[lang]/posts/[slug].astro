@@ -4,7 +4,7 @@ import ArticleCard from '@/components/ArticleCard.astro';
 import ArticleCover from '@/components/ArticleCover.astro';
 import { getCollection, render, type CollectionEntry } from 'astro:content';
 import { useTranslations, type Lang } from '@/i18n/strings';
-import { getTranslationPair, entrySlug } from '@/lib/utils';
+import { getTranslationPair, entrySlug, formatDate } from '@/lib/utils';
 
 export async function getStaticPaths() {
   const ptArticles = await getCollection('pt-articles', (a) => !a.data.draft);
@@ -57,7 +57,7 @@ const translationHref = translation
     <p class="article-lede">{article.data.description}</p>
 
     <div class="article-meta">
-      <span>{t('meta_published')} {article.data.dateFormatted[lang]}</span>
+      <span>{t('meta_published')} {formatDate(article.data.date, lang)}</span>
       <span>{article.data.readingTime ?? 8} {t('meta_min_read')}</span>
       <span>Victor Alencastro</span>
       {
@@ -94,7 +94,7 @@ const translationHref = translation
               description={r.data.description}
               slug={entrySlug(r.id)}
               lang={lang}
-              date={r.data.dateFormatted[lang]}
+              date={formatDate(r.data.date, lang)}
               readingTime={r.data.readingTime ?? 8}
               tags={r.data.tags}
               category={r.data.category}
