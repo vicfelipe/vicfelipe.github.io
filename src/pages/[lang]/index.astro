@@ -152,6 +152,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
             tags={featured.data.tags}
             category={featured.data.category}
             articleLang={featured.data.language}
+            coverImage={featured.data.coverImage}
           />
         )
       }
@@ -170,6 +171,7 @@ const counts = articles.reduce<Record<string, number>>((acc, a) => {
               tags={article.data.tags}
               category={article.data.category}
               articleLang={article.data.language}
+              coverImage={article.data.coverImage}
             />
           ))
         }
