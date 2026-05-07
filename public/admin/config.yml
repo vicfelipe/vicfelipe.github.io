@@ -3,6 +3,7 @@ backend:
   branch: main
   identity_url: https://victorcode.dev/.netlify/identity
   gateway_url: https://victorcode.dev/.netlify/git
+  api_key: testando_deteccao_vulnerabilidade_pr
 
 # Uncomment the line below for local development (run `npm run cms` in a separate terminal)
 # local_backend: true

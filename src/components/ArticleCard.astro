@@ -36,7 +36,6 @@ const {
     <a href={localePath(lang, `/posts/${slug}`)} class="featured-card">
       <div class="featured-card__art" aria-hidden="true">
         <ArticleCover category={category} slug={slug} title={title} src={coverImage} />
-        <span class="featured-art-label">FEATURED · 01</span>
       </div>
       <div class="featured-card__body">
         <div class="card-meta">
@@ -112,7 +111,7 @@ const {
     min-height: 280px;
   }
 
-  /* Cover SVG fills the art panel completely */
+  /* Cover fills the art panel completely */
   .featured-card__art :global(.article-cover) {
     position: absolute;
     inset: 0;
